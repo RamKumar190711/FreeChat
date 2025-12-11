@@ -4,7 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.kapt")
     id("dagger.hilt.android.plugin")
+    id("com.google.gms.google-services")
 }
+
 
 android {
     namespace = "com.toqsoft.freechat"
@@ -53,6 +55,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.lifecycle.process)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -65,17 +68,20 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.57.2")
     kapt("com.google.dagger:hilt-android-compiler:2.57.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
-
-    // Hilt integration for Jetpack Compose
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
-
     implementation("androidx.datastore:datastore-preferences:1.1.0")
-
-    // JSON Serialization
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // MQTT Client (Paho - The standard for Android)
+    // MQTT Client
     implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
     implementation("org.eclipse.paho:org.eclipse.paho.android.service:1.1.1")
+
+    // Firebase BOM (aligns versions automatically)
+    implementation(platform("com.google.firebase:firebase-bom:32.2.2"))
+
+    // Firebase libraries (no versions needed, BOM controls them)
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx") // optional
 }

@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.toqsoft.freechat" />
+                  <option name="mobileSdkAppId" value="1:312484672646:android:7479e9091dc9391d94cd07" />
+                  <option name="projectId" value="freechat-7553f" />
+                  <option name="projectNumber" value="312484672646" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

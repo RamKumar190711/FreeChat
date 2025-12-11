@@ -31,87 +31,58 @@ fun UserListScreen(
             .fillMaxSize()
             .padding(16.dp)
             .windowInsetsPadding(WindowInsets.statusBars)
-
     ) {
-        // --- Your Name ---
+        // Your Name
         Text("Your name:")
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = inputName,
             onValueChange = { inputName = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Enter your display name") },
-            shape = RoundedCornerShape(6.dp) // Curved corners
+            placeholder = { Text("Enter your display name") }
         )
         Spacer(Modifier.height(8.dp))
-
         if (myUsername.isEmpty()) {
             Button(onClick = {
                 val nameTrimmed = inputName.trim()
-                if (nameTrimmed.isNotBlank()) {
-                    viewModel.announceSelf(nameTrimmed)
-                    inputName = nameTrimmed
-                }
+                if (nameTrimmed.isNotBlank()) viewModel.announceSelf(nameTrimmed)
             }) {
                 Text("Save & Announce")
             }
             Spacer(Modifier.height(16.dp))
         }
 
-        // --- Discover Name ---
+        // Discover Name
         Text("Discover name:")
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(
             value = discoverName,
             onValueChange = { discoverName = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Enter a name to add") },
-            shape = RoundedCornerShape(6.dp) // Curved corners
+            placeholder = { Text("Enter a name to add") }
         )
         Spacer(Modifier.height(8.dp))
         Button(onClick = {
             val nameTrimmed = discoverName.trim()
-            if (nameTrimmed.isNotEmpty() && nameTrimmed != inputName && !users.contains(nameTrimmed)) {
+            if (nameTrimmed.isNotEmpty() && nameTrimmed != inputName) {
                 viewModel.addDiscoveredUser(nameTrimmed)
-                discoverName = ""
+                discoverName = "" // clear field after saving
             }
         }) { Text("Add User") }
 
         Spacer(Modifier.height(24.dp))
         Text("Users:")
         Spacer(Modifier.height(8.dp))
-
-        Surface(modifier = Modifier.fillMaxWidth()) {
-            if (users.isEmpty() && myUsername.isEmpty()) {
-                Box(
-                    Modifier.fillMaxWidth().padding(16.dp),
-                    contentAlignment = Alignment.Center
+        LazyColumn {
+            items(users.filter { it != myUsername }) { user ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpenChat(user) }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("No users discovered. Make sure other clients are running and hit Save & Announce.")
-                }
-            } else {
-                LazyColumn {
-                    if (myUsername.isNotEmpty()) {
-                        item {
-                            Row(
-                                Modifier.fillMaxWidth().padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) { Text("$myUsername (You)") }
-                        }
-                    }
-
-                    items(users.filter { it != myUsername }) { user ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable { onOpenChat(user)
-                                }
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(user)
-                        }
-                    }
+                    Text(user)
                 }
             }
         }

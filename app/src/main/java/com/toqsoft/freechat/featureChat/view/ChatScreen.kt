@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -18,9 +19,7 @@ import com.toqsoft.freechat.coreModel.ChatMessage
 import com.toqsoft.freechat.coreModel.MessageStatus
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,92 +29,75 @@ fun ChatScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val messagesMap by viewModel.messagesMap.collectAsState()
-    val typingMap by viewModel.typingMap.collectAsState()
-    val lastMessageStatus by viewModel.lastMessageStatus.collectAsState()
-    val lastSeen by viewModel.otherUserLastSeen.collectAsState()
-    var inputText by remember { mutableStateOf("") }
+    val messages = messagesMap[otherUserId] ?: emptyList()
+    var input by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val userStatus by viewModel.combinedUserStatus.collectAsState()
 
-    val chatMessages = messagesMap[otherUserId] ?: emptyList()
-    val typing = typingMap[otherUserId] ?: false
+    // Observe chat only once per user
+    LaunchedEffect(otherUserId) {
+        viewModel.observeChatWithUser(otherUserId)
+    }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFFF8F8F8))) {
+    // Mark messages as seen
+    LaunchedEffect(messages) {
+        val firstVisibleIndex = listState.firstVisibleItemIndex
+        val visibleMessages = messages.asReversed().drop(firstVisibleIndex)
+        visibleMessages.forEach { msg ->
+            if (msg.senderId != viewModel.myUserId && msg.status != MessageStatus.SEEN) {
+                viewModel.markMessageSeen(msg)
+            }
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
 
         TopAppBar(
             title = {
                 Column {
-                    Text(otherUserId, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        chatStatusTextFromTick(lastMessageStatus, lastSeen),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
+                    Text(otherUserId)
+                    Text(userStatus, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                 }
             },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } },
-            modifier = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                }
+            }
         )
 
         LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            state = listState,
+            modifier = Modifier.weight(1f),
             reverseLayout = true
         ) {
-            items(chatMessages.reversed()) { msg ->
+            items(messages.reversed()) { msg ->
                 MessageBubble(msg, msg.senderId == viewModel.myUserId)
-                if (msg.senderId != viewModel.myUserId && msg.status == MessageStatus.DELIVERED) {
-                    LaunchedEffect(msg.id) { viewModel.markMessageSeen(msg) }
-                }
             }
-            if (typing) item { TypingIndicator() }
         }
 
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(8.dp).imePadding()
+            modifier = Modifier
+                .padding(8.dp)
+                .imePadding(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             TextField(
-                value = inputText,
-                onValueChange = {
-                    inputText = it
-                    viewModel.sendTyping(otherUserId, it.isNotEmpty())
-                },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Message...") }
+                value = input,
+                onValueChange = { input = it },
+                modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(8.dp))
-            Button(onClick = {
-                if (inputText.isNotBlank()) {
-                    viewModel.sendMessage(inputText.trim(), otherUserId)
-                    inputText = ""
-                    viewModel.sendTyping(otherUserId, false)
+            Button(
+                onClick = {
+                    if (input.isNotBlank()) {
+                        viewModel.sendMessage(input.trim(), otherUserId)
+                        input = ""
+                    }
                 }
-            }) { Text("Send") }
+            ) { Text("Send") }
         }
     }
-}
-@Composable
-fun MessageStatusIcon(status: MessageStatus) {
-    val (text, color) = when (status) {
-        MessageStatus.SENT -> "✓" to Color.LightGray
-        MessageStatus.DELIVERED -> "✓✓" to Color.LightGray
-        MessageStatus.SEEN -> "✓✓" to Color(0xFF0D88FF)
-    }
-    Text(text = text, color = color, style = MaterialTheme.typography.labelSmall)
-}
-
-
-@Composable
-fun chatStatusTextFromTick(lastMessageStatus: MessageStatus?, lastSeen: Long?): String {
-    return when (lastMessageStatus) {
-        MessageStatus.SENT -> "offline"
-        MessageStatus.DELIVERED -> lastSeen?.let { "last seen at ${formatTime(it)}" } ?: "offline"
-        MessageStatus.SEEN -> "online"
-        else -> "offline"
-    }
-}
-
-@Composable
-fun formatTime(timestamp: Long) = remember(timestamp) {
-    java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
 }
 
 @Composable
@@ -152,9 +134,11 @@ fun MessageBubble(message: ChatMessage, isMe: Boolean) {
 }
 
 @Composable
-fun TypingIndicator() = Row(
-    Modifier.fillMaxWidth().padding(8.dp),
-    verticalAlignment = Alignment.CenterVertically
-) {
-    Text("Typing...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+fun MessageStatusIcon(status: MessageStatus) {
+    val (text, color) = when (status) {
+        MessageStatus.SENT -> "✓" to Color.LightGray
+        MessageStatus.DELIVERED -> "✓✓" to Color.LightGray
+        MessageStatus.SEEN -> "✓✓" to Color(0xFF0D88FF)
+    }
+    Text(text = text, color = color, style = MaterialTheme.typography.labelSmall)
 }

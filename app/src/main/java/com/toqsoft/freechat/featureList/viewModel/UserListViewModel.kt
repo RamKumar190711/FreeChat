@@ -3,17 +3,22 @@ package com.toqsoft.freechat.featureList.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.toqsoft.freechat.coreModel.UserPreferencesRepository
-import com.toqsoft.freechat.coreNetwork.MqttClientManager
-import com.toqsoft.freechat.coreModel.UserPresence
+import com.toqsoft.freechat.coreNetwork.FirestoreChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class UserListViewModel @Inject constructor(
-    private val mqttManager: MqttClientManager,
+    private val firestoreRepo: FirestoreChatRepository, // Firestore repo
     private val prefs: UserPreferencesRepository
 ) : ViewModel() {
 
@@ -22,54 +27,26 @@ class UserListViewModel @Inject constructor(
 
     val myUsername: Flow<String> = prefs.usernameFlow.map { it ?: "" }
 
-    private val _userPresenceMap = MutableStateFlow<Map<String, UserPresence>>(emptyMap())
-    val userPresenceMap: StateFlow<Map<String, UserPresence>> = _userPresenceMap.asStateFlow()
-
     init {
         viewModelScope.launch {
-            prefs.discoveredUsersFlow.collect { savedUsers ->
-                _users.value = (_users.value + savedUsers).distinct()
-            }
-        }
-    }
-
-    private fun observeUserPresence(userId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            mqttManager.observeUserPresence(userId).collectLatest { presence ->
-                val map = _userPresenceMap.value.toMutableMap()
-                map[userId] = presence
-                _userPresenceMap.value = map
+            // Observe Firestore users collection
+            firestoreRepo.getUsersFlow().collect { userList ->
+                _users.value = userList
             }
         }
     }
 
     fun announceSelf(name: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             prefs.saveUsername(name)
-            if (!_users.value.contains(name)) _users.value = _users.value + name
-            if (!mqttManager.isConnected()) mqttManager.connect(name)
-            mqttManager.publishPresenceStatus(name, true, null)
+            firestoreRepo.saveUser(name, name) // save in Firestore
         }
     }
 
     fun addDiscoveredUser(name: String) {
-        if (name.isNotBlank() && !_users.value.contains(name)) {
-            _users.value = _users.value + name
+        if (name.isNotBlank()) {
             viewModelScope.launch {
-                val savedUsers = prefs.discoveredUsersFlow.first().toMutableList()
-                if (!savedUsers.contains(name)) {
-                    savedUsers.add(name)
-                    prefs.saveDiscoveredUsers(savedUsers)
-                }
-            }
-            observeUserPresence(name)
-        }
-    }
-
-    fun goOffline() {
-        viewModelScope.launch {
-            myUsername.firstOrNull()?.let { name ->
-                mqttManager.publishPresenceStatus(name, false, System.currentTimeMillis())
+                firestoreRepo.saveUser(name, name) // save to Firestore
             }
         }
     }
