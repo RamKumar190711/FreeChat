@@ -80,6 +80,12 @@ dependencies {
     // Firebase BOM (aligns versions automatically)
     implementation(platform("com.google.firebase:firebase-bom:32.2.2"))
 
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("com.google.firebase:firebase-messaging:23.3.0")
+
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+// Coroutines (if not already)
+
     // Firebase libraries (no versions needed, BOM controls them)
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")

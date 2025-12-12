@@ -14,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.toqsoft.freechat.coreModel.ChatMessage
 import com.toqsoft.freechat.coreModel.MessageStatus
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
@@ -25,8 +24,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 @Composable
 fun ChatScreen(
     otherUserId: String,
-    onBack: () -> Unit = {},
-    viewModel: ChatViewModel = hiltViewModel()
+    viewModel: ChatViewModel,
+    onBack: () -> Unit = {}
 ) {
     val messagesMap by viewModel.messagesMap.collectAsState()
     val messages = messagesMap[otherUserId] ?: emptyList()
@@ -34,9 +33,11 @@ fun ChatScreen(
     val listState = rememberLazyListState()
     val userStatus by viewModel.combinedUserStatus.collectAsState()
 
-    // Observe chat only once per user
-    LaunchedEffect(otherUserId) {
-        viewModel.observeChatWithUser(otherUserId)
+    // Observe chat after myUserId is ready
+    LaunchedEffect(viewModel.myUserId) {
+        if (viewModel.myUserId != "unknown") {
+            viewModel.observeChatWithUser(otherUserId)
+        }
     }
 
     // Mark messages as seen

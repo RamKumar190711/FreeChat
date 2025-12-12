@@ -7,10 +7,9 @@ import com.toqsoft.freechat.coreModel.*
 import com.toqsoft.freechat.coreNetwork.FirestoreChatRepository
 import com.toqsoft.freechat.coreNetwork.MqttClientManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -23,7 +22,7 @@ class ChatViewModel @Inject constructor(
     private var myUserIdInternal: String? = null
     val myUserId: String get() = myUserIdInternal ?: "unknown"
 
-    // Persisted messages for each user
+    /** ------------------ State ------------------ */
     private val _messagesMap = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     val messagesMap: StateFlow<Map<String, List<ChatMessage>>> = _messagesMap.asStateFlow()
 
@@ -45,6 +44,27 @@ class ChatViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, "Offline")
 
+    /** ------------------ MQTT Publish Queue ------------------ */
+    private val mqttQueue = Channel<Any>(Channel.UNLIMITED)
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            for (event in mqttQueue) {
+                try {
+                    when (event) {
+                        is StatusEvent -> mqttManager.publishStatus(event)
+                        is TypingEvent -> mqttManager.publishTyping(event)
+                        is ChatMessage -> mqttManager.publishMessage(event)
+                    }
+                    delay(5) // small throttle to avoid flooding
+                } catch (e: Exception) {
+                    e.printStackTrace() // optionally log or retry
+                }
+            }
+        }
+    }
+
+    /** ------------------ Init ------------------ */
     init {
         viewModelScope.launch {
             prefs.usernameFlow.collect { name ->
@@ -69,7 +89,6 @@ class ChatViewModel @Inject constructor(
     }
 
     /** ------------------ Chat ------------------ */
-
     fun sendMessage(text: String, toUserId: String) {
         val myId = myUserIdInternal ?: return
         val msg = ChatMessage(
@@ -81,7 +100,7 @@ class ChatViewModel @Inject constructor(
         )
         updateLocalMessages(toUserId, msg)
         viewModelScope.launch(Dispatchers.IO) {
-            mqttManager.publishMessage(msg)
+            mqttQueue.send(msg)
             firestoreRepo.sendMessage(msg)
         }
     }
@@ -93,21 +112,20 @@ class ChatViewModel @Inject constructor(
             receiverId = message.senderId,
             status = MessageStatus.SEEN
         )
-        viewModelScope.launch(Dispatchers.IO) { mqttManager.publishStatus(seenEvent) }
+        viewModelScope.launch(Dispatchers.IO) {
+            mqttQueue.send(seenEvent)
+        }
         updateMessageStatus(message.senderId, message.id, MessageStatus.SEEN)
     }
 
     fun sendTyping(toUserId: String, isTyping: Boolean) {
         val event = TypingEvent(senderId = myUserId, receiverId = toUserId, isTyping = isTyping)
-        viewModelScope.launch(Dispatchers.IO) { mqttManager.publishTyping(event) }
+        viewModelScope.launch(Dispatchers.IO) { mqttQueue.send(event) }
     }
 
-    /** Load messages from Firestore once and persist */
+    /** ---------------- Load messages from Firestore ---------------- */
     fun observeChatWithUser(otherUserId: String) {
         val myId = myUserIdInternal ?: return
-        // Avoid observing the same user multiple times
-        if (_messagesMap.value.containsKey(otherUserId)) return
-
         viewModelScope.launch(Dispatchers.IO) {
             firestoreRepo.getMessagesFlow(otherUserId, myId).collect { messages ->
                 _messagesMap.value = _messagesMap.value.toMutableMap().apply {
@@ -118,7 +136,6 @@ class ChatViewModel @Inject constructor(
     }
 
     /** ---------------- MQTT Observers ---------------- */
-
     private fun observeIncomingMessages() {
         val myId = myUserIdInternal ?: return
         viewModelScope.launch(Dispatchers.IO) {
@@ -132,7 +149,7 @@ class ChatViewModel @Inject constructor(
                         receiverId = msg.senderId,
                         status = MessageStatus.DELIVERED
                     )
-                    viewModelScope.launch(Dispatchers.IO) { mqttManager.publishStatus(deliveredEvent) }
+                    mqttQueue.send(deliveredEvent)
                 }
             }
         }
@@ -168,7 +185,6 @@ class ChatViewModel @Inject constructor(
     }
 
     /** ------------------ Helpers ------------------ */
-
     private fun updateLocalMessages(userId: String, message: ChatMessage) {
         val currentMessages = _messagesMap.value[userId]?.toMutableList() ?: mutableListOf()
         if (currentMessages.none { it.id == message.id }) {
