@@ -9,6 +9,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.toqsoft.freechat.app.BadgeManager
 import com.toqsoft.freechat.featureChat.ui.ChatScreen
 import com.toqsoft.freechat.featureList.view.UserListScreen
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
@@ -25,6 +26,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    override fun onResume() {
+        super.onResume()
+        BadgeManager.clear(this)
+    }
+
 }
 
 @Composable

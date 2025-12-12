@@ -35,3 +35,11 @@ data class UserPresence(
     val isOnline: Boolean,
     val lastSeen: Long?
 )
+
+
+data class User(
+    val id: String = "",
+    val name: String = "",
+    val unreadCount: Int = 0
+)
+

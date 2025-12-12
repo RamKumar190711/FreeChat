@@ -1,5 +1,7 @@
 package com.toqsoft.freechat.app
 
+import android.Manifest
+import android.R
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +9,7 @@ import android.content.Intent
 import android.media.RingtoneManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -30,7 +33,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         updateFcmToken(token)
     }
 
-
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
 
@@ -40,14 +43,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         val messageText = data["text"] ?: ""
         val messageId = data["messageId"] ?: ""
 
+        // ⭐ ADD BADGE COUNT HERE
+        BadgeManager.increase(this)
+
         // Show notification
         showNotification(senderId, messageText, senderId, roomId)
 
-        // Mark message as delivered in Firestore
+        // Mark message as delivered
         markMessageDelivered(messageId, senderId)
     }
 
     /** ---------------- Notification ---------------- */
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     private fun showNotification(title: String?, body: String?, senderId: String, roomId: String) {
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -61,16 +68,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val notification = NotificationCompat.Builder(this, "chat_channel")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_dialog_info)
             .setContentTitle(title ?: "New Message")
             .setContentText(body ?: "")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setSound(soundUri)
             .setContentIntent(pendingIntent)
+            .setNumber(BadgeManager.getCount(this))   // ⭐ attaches badge count
             .build()
 
-        NotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), notification)
+        NotificationManagerCompat.from(this)
+            .notify(System.currentTimeMillis().toInt(), notification)
     }
 
     /** ---------------- Firestore Updates ---------------- */

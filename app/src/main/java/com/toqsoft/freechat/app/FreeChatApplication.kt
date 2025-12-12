@@ -12,6 +12,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.firstOrNull
 import com.toqsoft.freechat.coreModel.UserPreferencesRepository
+import com.toqsoft.freechat.coreNetwork.NotificationHelper
 
 @HiltAndroidApp
 class FreeChatApplication : Application(), LifecycleObserver {
@@ -24,6 +25,7 @@ class FreeChatApplication : Application(), LifecycleObserver {
         super.onCreate()
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         saveFcmToken()
+        NotificationHelper.createChannel(this)
     }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_START)
