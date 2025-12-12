@@ -51,7 +51,11 @@ fun ChatScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White) // Chat screen background
+    ) {
 
         TopAppBar(
             title = {
@@ -64,7 +68,7 @@ fun ChatScreen(
                 IconButton(onClick = onBack) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                 }
-            }
+            },
         )
 
         LazyColumn(
@@ -80,13 +84,20 @@ fun ChatScreen(
         Row(
             modifier = Modifier
                 .padding(8.dp)
-                .imePadding(),
+                .imePadding()
+                .navigationBarsPadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextField(
+            OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+
+                placeholder = { Text("Type a message") },
+                singleLine = true
             )
             Spacer(Modifier.width(8.dp))
             Button(
@@ -95,8 +106,12 @@ fun ChatScreen(
                         viewModel.sendMessage(input.trim(), otherUserId)
                         input = ""
                     }
-                }
-            ) { Text("Send") }
+                },
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Text("Send")
+            }
         }
     }
 }
@@ -120,7 +135,7 @@ fun MessageBubble(message: ChatMessage, isMe: Boolean) {
                 modifier = Modifier
                     .background(
                         if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-                        RoundedCornerShape(8.dp)
+                        RoundedCornerShape(12.dp)
                     )
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
