@@ -19,13 +19,17 @@ import com.toqsoft.freechat.coreModel.MessageStatus
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.res.painterResource
+import androidx.navigation.NavController
+import com.toqsoft.freechat.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     otherUserId: String,
     viewModel: ChatViewModel,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    navController: NavController
 ) {
     val messagesMap by viewModel.messagesMap.collectAsState()
     val messages = messagesMap[otherUserId] ?: emptyList()
@@ -69,6 +73,64 @@ fun ChatScreen(
                     Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                 }
             },
+
+            actions = {
+                IconButton(onClick = {
+
+                    viewModel.startCall(
+                        otherUserId = otherUserId,
+                        audioOnly = true,
+                        onAccepted = {
+                            navController.navigate("speak/$otherUserId/true") {
+                                popUpTo("calling/$otherUserId/true") { inclusive = true }
+                            }
+                        },
+                        onRejected = {
+                            navController.popBackStack() // back to chat
+                        }
+                    )
+
+                    // 🔥 IMMEDIATE navigation
+                    navController.navigate("calling/$otherUserId/true")
+
+                }){
+                    Icon(
+                        painter = painterResource(id = R.drawable.audio),
+                        contentDescription = "Audio Call",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(end = 8.dp)
+                            .size(24.dp)// Use primary color
+                    )
+                }
+                IconButton(onClick = {
+
+                    viewModel.startCall(
+                        otherUserId = otherUserId,
+                        audioOnly = false,
+                        onAccepted = {
+                            navController.navigate("speak/$otherUserId/true") {
+                                popUpTo("calling/$otherUserId/true") { inclusive = true }
+                            }
+                        },
+                        onRejected = {
+                            navController.popBackStack() // back to chat
+                        }
+                    )
+
+                    // 🔥 IMMEDIATE navigation
+                    navController.navigate("calling/$otherUserId/true")
+
+                }) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.video),
+                        contentDescription = "Video Call",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp)
+                            .size(24.dp)// Use primary color
+                    )
+                }
+            }
+
         )
 
         LazyColumn(
@@ -155,6 +217,11 @@ fun MessageStatusIcon(status: MessageStatus) {
         MessageStatus.SENT -> "✓" to Color.LightGray
         MessageStatus.DELIVERED -> "✓✓" to Color.LightGray
         MessageStatus.SEEN -> "✓✓" to Color(0xFF0D88FF)
+        MessageStatus.accepted -> "accepted" to Color.Green
+        MessageStatus.rejected -> "rejected" to Color.Red
+        MessageStatus.ended -> "ended" to Color.Red
+        MessageStatus.ringing -> "ringing" to Color.Yellow
+
     }
     Text(text = text, color = color, style = MaterialTheme.typography.labelSmall)
 }

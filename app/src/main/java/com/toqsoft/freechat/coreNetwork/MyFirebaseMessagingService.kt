@@ -1,7 +1,6 @@
 package com.toqsoft.freechat.app
 
 import android.Manifest
-import android.R
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -17,6 +16,7 @@ import com.google.firebase.messaging.RemoteMessage
 import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.MainActivity
 import com.toqsoft.freechat.coreModel.UserPreferencesRepository
+import com.toqsoft.freechat.coreNetwork.IncomingCallManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -38,19 +38,29 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(remoteMessage)
 
         val data = remoteMessage.data
-        val senderId = data["senderId"] ?: return
-        val roomId = data["roomId"] ?: ""
-        val messageText = data["text"] ?: ""
-        val messageId = data["messageId"] ?: ""
+        val type = data["type"] ?: "CHAT" // Default to chat if not set
 
-        // ⭐ ADD BADGE COUNT HERE
-        BadgeManager.increase(this)
+        when (type) {
+            "CHAT" -> {
+                val senderId = data["senderId"] ?: return
+                val roomId = data["roomId"] ?: ""
+                val messageText = data["text"] ?: ""
+                val messageId = data["messageId"] ?: ""
 
-        // Show notification
-        showNotification(senderId, messageText, senderId, roomId)
+                // ⭐ Increment badge count
+                BadgeManager.increase(this)
 
-        // Mark message as delivered
-        markMessageDelivered(messageId, senderId)
+                // Show chat notification
+                showNotification(senderId, messageText, senderId, roomId)
+
+                // Mark message as delivered
+                markMessageDelivered(messageId, senderId)
+            }
+
+            "CALL" -> {
+                handleIncomingCall(data)
+            }
+        }
     }
 
     /** ---------------- Notification ---------------- */
@@ -68,14 +78,14 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val notification = NotificationCompat.Builder(this, "chat_channel")
-            .setSmallIcon(R.drawable.ic_dialog_info)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title ?: "New Message")
             .setContentText(body ?: "")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setSound(soundUri)
             .setContentIntent(pendingIntent)
-            .setNumber(BadgeManager.getCount(this))   // ⭐ attaches badge count
+            .setNumber(BadgeManager.getCount(this))
             .build()
 
         NotificationManagerCompat.from(this)
@@ -139,4 +149,33 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             manager.createNotificationChannel(channel)
         }
     }
+
+    /** ---------------- Incoming Call ---------------- */
+    private fun handleIncomingCall(data: Map<String, String>) {
+
+        CoroutineScope(Dispatchers.Main).launch {
+
+            val callerId = data["callerId"] ?: return@launch
+            val receiverId = getCurrentUserId() ?: return@launch
+            val channel = data["channel"] ?: return@launch
+            val token = data["token"] ?: return@launch
+            val callId = data["callId"] ?: return@launch
+            val audioOnly = data["audioOnly"]?.toBoolean() ?: false
+
+            Log.d("CALL_DEBUG", "📲 Incoming call from $callerId to $receiverId")
+
+            IncomingCallManager.showIncomingCall(
+                callerId = callerId,
+                receiverId = receiverId,
+                channel = channel,
+                token = token,
+                callId = callId,
+                audioOnly = audioOnly
+            )
+        }
+    }
+
+
+
+
 }

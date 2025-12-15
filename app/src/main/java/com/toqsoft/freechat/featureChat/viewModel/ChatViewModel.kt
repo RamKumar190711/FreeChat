@@ -1,15 +1,20 @@
 package com.toqsoft.freechat.featureChat.viewModel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.app.FreeChatApplication
 import com.toqsoft.freechat.coreModel.*
+import com.toqsoft.freechat.coreNetwork.AgoraManager
 import com.toqsoft.freechat.coreNetwork.FirestoreChatRepository
+import com.toqsoft.freechat.coreNetwork.IncomingCallManager
 import com.toqsoft.freechat.coreNetwork.MqttClientManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -87,6 +92,108 @@ class ChatViewModel @Inject constructor(
             }
         }
     }
+
+    fun startCall(
+        otherUserId: String,
+        audioOnly: Boolean,
+        onAccepted: () -> Unit,
+        onRejected: () -> Unit
+    ) {
+        val myId = myUserIdInternal ?: return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val channel = "call_${UUID.randomUUID()}"
+            val callId = UUID.randomUUID().toString()
+            val chatId = getChatId(myId, otherUserId)
+
+            val callData = mapOf(
+                "type" to "call",
+                "status" to "ringing",
+                "callerId" to myId,
+                "receiverId" to otherUserId,
+                "channel" to channel,
+                "audioOnly" to audioOnly,
+                "timestamp" to System.currentTimeMillis()
+            )
+
+            FirebaseFirestore.getInstance()
+                .collection("chats")
+                .document(chatId)
+                .collection("messages")
+                .document(callId)
+                .set(callData)
+
+            // 👂 listen for accept/reject
+            observeCallStatus(
+                chatId = chatId,
+                callId = callId,
+                onAccepted = onAccepted,
+                onRejected = onRejected
+            )
+        }
+    }
+
+
+    private fun getChatId(a: String, b: String): String =
+        listOf(a, b).sorted().joinToString("_")
+
+
+
+    fun observeCallStatus(
+        chatId: String,
+        callId: String,
+        onAccepted: () -> Unit,
+        onRejected: () -> Unit
+    ) {
+        FirebaseFirestore.getInstance()
+            .collection("chats")
+            .document(chatId)
+            .collection("messages")
+            .document(callId)
+            .addSnapshotListener { snap, _ ->
+                when (snap?.getString("status")) {
+                    "accepted" -> onAccepted()
+                    "rejected", "ended" -> onRejected()
+                }
+            }
+    }
+
+
+
+
+    // Replace this with your backend or Firestore approach
+    private suspend fun sendCallNotification(
+        toUserId: String,
+        channel: String,
+        token: String,
+        callerId: String,
+        audioOnly: Boolean
+    ) {
+        val callData = mapOf(
+            "type" to "CALL",
+            "callerId" to callerId,
+            "channel" to channel,
+            "token" to token,
+            "callId" to UUID.randomUUID().toString(),
+            "audioOnly" to audioOnly.toString()
+        )
+
+        // Save to Firestore (receiver can observe)
+        FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(toUserId)
+            .collection("incomingCalls")
+            .add(callData)
+    }
+
+
+    // Replace this with your Firebase Function call to generate an Agora token
+        private suspend fun getAgoraToken(channelName: String, uid: Int): String {
+            // TODO: Call your backend and return the token
+            return "TEMPORARY_TOKEN"
+        }
+
+
 
     /** ------------------ Chat ------------------ */
     fun sendMessage(text: String, toUserId: String) {

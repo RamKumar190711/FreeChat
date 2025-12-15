@@ -2,7 +2,18 @@ package com.toqsoft.freechat.coreModel
 
 import java.util.UUID
 
-enum class MessageStatus { SENT, DELIVERED, SEEN }
+enum class MessageStatus {
+    SENT,
+    DELIVERED,
+    SEEN,
+
+    // 📞 CALL STATES (ADD THESE)
+    ringing,
+    accepted,
+    rejected,
+    ended
+}
+
 
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
@@ -43,3 +54,13 @@ data class User(
     val unreadCount: Int = 0
 )
 
+
+// IncomingCallData.kt
+data class IncomingCallData(
+    val callerId: String,
+    val receiverId: String,   // 🔥 ADD THIS
+    val channel: String,
+    val token: String,
+    val callId: String,
+    val audioOnly: Boolean = false
+)
