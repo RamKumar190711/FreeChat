@@ -1,3 +1,4 @@
+// ------------------------- IncomingCallOverlay.kt -------------------------
 package com.toqsoft.freechat.featureCall.view
 
 import androidx.compose.foundation.background
@@ -5,9 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -20,8 +19,7 @@ import com.toqsoft.freechat.coreNetwork.IncomingCallManager
 import io.agora.rtc2.RtcEngine
 
 @Composable
-fun IncomingCallOverlay(rtcEngine: RtcEngine,
-                        navController: NavController) {
+fun IncomingCallOverlay(rtcEngine: RtcEngine, navController: NavController) {
     val incomingCall by IncomingCallManager.incomingCall.collectAsState()
 
     incomingCall?.let { call ->
@@ -29,51 +27,37 @@ fun IncomingCallOverlay(rtcEngine: RtcEngine,
             Modifier
                 .fillMaxSize()
                 .background(Color(0xAA000000))
-                .clickable { /* consume clicks */ }
+                .clickable { /* consume */ }
         ) {
             Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(16.dp),
+                modifier = Modifier.align(Alignment.Center).padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text("Incoming call from ${call.callerId}", color = Color.White, fontSize = 24.sp)
                 Spacer(Modifier.height(16.dp))
                 Row {
                     Button(onClick = {
+                        // Join channel
+                        val uid = 0
+                        AgoraManager.rtcEngine?.joinChannel(call.token, call.channel, null, uid)
 
-                        val uid = AgoraManager.rtcEngine.hashCode() and 0x7fffffff
-                        AgoraManager.rtcEngine?.joinChannel(
-                            call.token,
-                            call.channel,
-                            null,
-                            uid
-                        )
-
-                        // 🔥 UPDATE CALL STATUS
+                        // Update status
                         FirebaseFirestore.getInstance()
                             .collection("chats")
-                            .document(listOf(call.callerId, /* sam */ call.receiverId).sorted().joinToString("_"))
+                            .document(listOf(call.callerId, call.receiverId).sorted().joinToString("_"))
                             .collection("messages")
                             .document(call.callId)
                             .update("status", "accepted")
 
                         IncomingCallManager.clearCall()
-
-                        // 🔥 sam → SpeakingScreen
                         navController.navigate("speak/${call.callerId}/${call.audioOnly}")
+                    }) { Text("Accept") }
 
-                    }) {
-                        Text("Accept")
-                    }
+                    Spacer(Modifier.width(16.dp))
 
                     Button(onClick = {
-                        // Reject call
                         IncomingCallManager.clearCall()
-                    }) {
-                        Text("Reject")
-                    }
-
+                    }) { Text("Reject") }
                 }
             }
         }
