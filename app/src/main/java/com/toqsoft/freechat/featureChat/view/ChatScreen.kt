@@ -63,6 +63,9 @@ fun ChatScreen(
             Toast.makeText(context, "Microphone permission required", Toast.LENGTH_SHORT).show()
         }
     }
+    LaunchedEffect(otherUserId) {
+        viewModel.observeChatWithUser(otherUserId)
+    }
 
     Column(
         modifier = Modifier

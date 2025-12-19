@@ -162,7 +162,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val callId = data["callId"] ?: return@launch
             val audioOnly = data["audioOnly"]?.toBoolean() ?: false
 
-            Log.d("CALL_DEBUG", "📲 Incoming call from $callerId to $receiverId")
+
 
             IncomingCallManager.showIncomingCall(
                 callerId = callerId,
@@ -174,7 +174,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             )
         }
     }
-
 
 
 

@@ -1,28 +1,77 @@
 package com.toqsoft.freechat.coreNetwork
 
 import android.content.Context
-import io.agora.rtc2.Constants
-import io.agora.rtc2.IRtcEngineEventHandler
-import io.agora.rtc2.RtcEngine
+import android.util.Log
+import io.agora.rtc2.*
 
 object AgoraManager {
+
     var rtcEngine: RtcEngine? = null
         private set
 
-    fun init(context: Context, eventHandler: IRtcEngineEventHandler) {
-        if (rtcEngine == null) {
-            rtcEngine = RtcEngine.create(context, AgoraConfig.APP_ID, eventHandler)
-            rtcEngine?.setChannelProfile(Constants.CHANNEL_PROFILE_COMMUNICATION)
-            rtcEngine?.enableAudio()
+    private val rtcEventHandler = object : IRtcEngineEventHandler() {
+
+        override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
+            Log.d("AGORA", "✅ Joined channel=$channel uid=$uid")
+        }
+
+        override fun onUserJoined(uid: Int, elapsed: Int) {
+            Log.d("AGORA", "👤 REMOTE USER JOINED uid=$uid")
+        }
+
+        override fun onUserOffline(uid: Int, reason: Int) {
+            Log.e("AGORA", "❌ REMOTE USER LEFT uid=$uid reason=$reason")
+            CallState.onRemoteLeft?.invoke()
+        }
+
+        override fun onAudioVolumeIndication(
+            speakers: Array<AudioVolumeInfo>,
+            totalVolume: Int
+        ) {
+            speakers.forEach { info ->
+                if (info.uid == 0) {
+                    Log.d(
+                        "AGORA_AUDIO",
+                        "🎤 LOCAL MIC volume=${info.volume} ${if (info.volume > 10) "👉 YOU ARE SPEAKING" else "🔇"}"
+                    )
+                } else {
+                    Log.d(
+                        "AGORA_AUDIO",
+                        "🔊 REMOTE uid=${info.uid} volume=${info.volume} ${if (info.volume > 10) "✅ AUDIO HEARD" else "🔇"}"
+                    )
+                }
+            }
         }
     }
 
+    fun init(context: Context) {
+        if (rtcEngine != null) return
+
+        rtcEngine = RtcEngine.create(context.applicationContext, AgoraConfig.APP_ID, rtcEventHandler)
+        rtcEngine?.apply {
+            setChannelProfile(Constants.CHANNEL_PROFILE_COMMUNICATION)
+            enableAudio()
+            enableLocalAudio(true)
+            muteLocalAudioStream(false)
+            setEnableSpeakerphone(true)
+            enableAudioVolumeIndication(200, 3, true)
+        }
+
+        Log.d("AGORA", "🎧 Agora Initialized")
+    }
+
+    fun joinChannel(token: String, channel: String, userId: String) {
+        val uid = userId.hashCode() and 0x7FFFFFFF // positive unique UID
+        rtcEngine?.joinChannel(token, channel, null, uid)
+    }
+
+    fun leaveChannel() {
+        rtcEngine?.leaveChannel()
+    }
 
     fun destroy() {
-        rtcEngine?.let {
-            RtcEngine.destroy()
-            rtcEngine = null
-        }
+        leaveChannel()
+        RtcEngine.destroy()
+        rtcEngine = null
     }
-
 }

@@ -58,7 +58,7 @@ data class User(
 // IncomingCallData.kt
 data class IncomingCallData(
     val callerId: String,
-    val receiverId: String,   // 🔥 ADD THIS
+    val receiverId: String,
     val channel: String,
     val token: String,
     val callId: String,

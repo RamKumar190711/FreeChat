@@ -9,8 +9,8 @@ object IncomingCallManager {
     val incomingCall: StateFlow<IncomingCallData?> = _incomingCall
 
     // IncomingCallManager.kt
-    fun showIncomingCall(receiverId: String,callerId: String, channel: String, token: String, callId: String, audioOnly: Boolean = false) {
-        _incomingCall.value = IncomingCallData(callerId,receiverId, channel, token, callId, audioOnly)
+    fun showIncomingCall(receiverId: String, callerId: String, channel: String, token: String, callId: String, audioOnly: Boolean = false) {
+        _incomingCall.value = IncomingCallData(callerId,receiverId ,channel, token, callId, audioOnly)
     }
 
 
