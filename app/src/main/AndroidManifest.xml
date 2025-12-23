@@ -9,8 +9,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
 
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-
-
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <meta-data
         android:name="com.google.firebase.messaging.default_notification_channel_id"
         android:value="chat_channel" />
@@ -27,6 +26,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:windowSoftInputMode="adjustResize|stateHidden"
             android:theme="@style/Theme.FreeChat">

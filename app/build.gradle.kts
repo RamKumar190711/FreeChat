@@ -69,6 +69,8 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:2.57.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
+    // Navigation for Jetpack Compose
+    implementation("androidx.navigation:navigation-compose:2.7.3")
 
     implementation("androidx.datastore:datastore-preferences:1.1.0")
     implementation("com.google.code.gson:gson:2.10.1")

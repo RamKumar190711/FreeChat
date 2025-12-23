@@ -3,6 +3,7 @@ package com.toqsoft.freechat.featureChat.viewModel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavController
 import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.app.FreeChatApplication
 import com.toqsoft.freechat.coreModel.*
@@ -49,6 +50,7 @@ class ChatViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, "Offline")
 
+
     /** ------------------ MQTT Publish Queue ------------------ */
     private val mqttQueue = Channel<Any>(Channel.UNLIMITED)
 
@@ -94,52 +96,49 @@ class ChatViewModel @Inject constructor(
     }
 
     fun startCall(
+        myUserId: String,
         otherUserId: String,
         audioOnly: Boolean,
-        onAccepted: () -> Unit,
-        onRejected: () -> Unit
-    ) {
-        val myId = myUserIdInternal ?: return
+        navController: NavController
+    ): String {
+        val callId = UUID.randomUUID().toString()
+        val channel = "call_${UUID.randomUUID()}"
+        val chatId = listOf(myUserId, otherUserId).sorted().joinToString("_")
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val channel = "call_${UUID.randomUUID()}"
-            val callId = UUID.randomUUID().toString()
-            val chatId = getChatId(myId, otherUserId)
+        val callData = mapOf(
+            "type" to "call",
+            "status" to "ringing",
+            "callerId" to myUserId,
+            "receiverId" to otherUserId,
+            "channel" to channel,
+            "audioOnly" to audioOnly,
+            "timestamp" to System.currentTimeMillis()
+        )
 
-            val callData = mapOf(
-                "type" to "call",
-                "status" to "ringing",
-                "callerId" to myId,
-                "receiverId" to otherUserId,
-                "channel" to channel,
-                "audioOnly" to audioOnly,
-                "timestamp" to System.currentTimeMillis()
-            )
+        FirebaseFirestore.getInstance()
+            .collection("chats")
+            .document(chatId)
+            .collection("messages")
+            .document(callId)
+            .set(callData)
+            .addOnSuccessListener {
+                Log.d("CallFlow", "Call created → callId=$callId")
+            }
+            .addOnFailureListener { e ->
+                Log.e("CallFlow", "Failed to create call", e)
+            }
 
-            FirebaseFirestore.getInstance()
-                .collection("chats")
-                .document(chatId)
-                .collection("messages")
-                .document(callId)
-                .set(callData)
+        navController.navigate("calling/$callId/$myUserId/$otherUserId/$audioOnly")
 
-            // 👂 listen for accept/reject
-            observeCallStatus(
-                chatId = chatId,
-                callId = callId,
-                onAccepted = onAccepted,
-                onRejected = onRejected
-            )
-        }
+        return callId
     }
 
-
-    private fun getChatId(a: String, b: String): String =
-        listOf(a, b).sorted().joinToString("_")
+    private fun getChatId(a: String, b: String) = listOf(a, b).sorted().joinToString("_")
 
 
 
-    fun observeCallStatus(
+
+    private fun observeCallStatus(
         chatId: String,
         callId: String,
         onAccepted: () -> Unit,
@@ -157,6 +156,7 @@ class ChatViewModel @Inject constructor(
                 }
             }
     }
+
 
 
 
@@ -188,10 +188,10 @@ class ChatViewModel @Inject constructor(
 
 
     // Replace this with your Firebase Function call to generate an Agora token
-        private suspend fun getAgoraToken(channelName: String, uid: Int): String {
-            // TODO: Call your backend and return the token
-            return "TEMPORARY_TOKEN"
-        }
+    private suspend fun getAgoraToken(channelName: String, uid: Int): String {
+        // TODO: Call your backend and return the token
+        return "TEMPORARY_TOKEN"
+    }
 
 
 

@@ -1,6 +1,10 @@
 package com.toqsoft.freechat.featureCall.view
 
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
@@ -19,19 +23,22 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import com.toqsoft.freechat.coreModel.IncomingCallData
 import com.toqsoft.freechat.coreNetwork.AgoraManager
 import com.toqsoft.freechat.coreNetwork.IncomingCallManager
+import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun IncomingCallOverlay(navController: NavController) {
+fun IncomingCallOverlay(navController: NavController,viewModel: ChatViewModel= hiltViewModel()) {
 
     val incomingCall by IncomingCallManager.incomingCall.collectAsState()
     val scope = rememberCoroutineScope()
-
+    val myId = viewModel.myUserId
     incomingCall?.let { call ->
 
         val swipeOffsetX = remember { Animatable(0f) }
@@ -74,7 +81,6 @@ fun IncomingCallOverlay(navController: NavController) {
                 )
             }
 
-            // 👉👈 Swipe Handle
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -97,7 +103,7 @@ fun IncomingCallOverlay(navController: NavController) {
                             onDragEnd = {
                                 when {
                                     swipeOffsetX.value > acceptThreshold -> {
-                                        acceptCall(call, navController)
+                                        acceptCall(call, navController,myId)
                                     }
 
                                     swipeOffsetX.value < rejectThreshold -> {
@@ -135,42 +141,42 @@ fun IncomingCallOverlay(navController: NavController) {
         }
     }
 }
+private fun acceptCall(call: IncomingCallData, navController: NavController, myUserId:String) {
+    val TAG = "CALL_FLOW_DEBUG"
 
-/** ✅ ACCEPT CALL */
-private fun acceptCall(
-    call: IncomingCallData,
-    navController: NavController
-) {
-    AgoraManager.rtcEngine?.joinChannel(
-        call.token,
-        call.channel,
-        null,
-        0
+    val myId = myUserId
+    val callerId = call.callerId
+    val chatId = listOf(myId, callerId).sorted().joinToString("_")
+
+    Log.d(TAG, "Receiver: Corrected Target chatId: $chatId  $myId")
+
+    val docRef = FirebaseFirestore.getInstance()
+        .collection("chats").document(chatId)
+        .collection("messages").document(call.callId)
+
+    val updateData = mapOf(
+        "status" to "accepted",
+        "channel" to call.channel,
+        "token" to call.token
     )
 
-    FirebaseFirestore.getInstance()
-        .collection("chats")
-        .document(listOf(call.callerId, call.receiverId).sorted().joinToString("_"))
-        .collection("messages")
-        .document(call.callId)
-        .update("status", "accepted")
+    docRef.set(updateData, SetOptions.merge())
+        .addOnSuccessListener {
+            Log.d(TAG, "Receiver: Successfully updated path: chats/$chatId/messages/${call.callId}")
+            IncomingCallManager.clearCall()
 
-    IncomingCallManager.clearCall()
-    navController.navigate(
-        "speak/${call.callId}/${call.callerId}/${call.receiverId}/${call.audioOnly}"
-    )
-
+            // Fix the navigation path (ensure all params are present)
+            navController.navigate("speak/${call.callId}/$callerId/$myId/${call.audioOnly}/$callerId") {
+                launchSingleTop = true
+            }
+        }
 }
-
-/** ❌ REJECT CALL */
 private fun rejectCall(call: IncomingCallData) {
-
+    val chatId = listOf(call.callerId, call.receiverId).sorted().joinToString("_")
     FirebaseFirestore.getInstance()
-        .collection("chats")
-        .document(listOf(call.callerId, call.receiverId).sorted().joinToString("_"))
-        .collection("messages")
-        .document(call.callId)
-        .update("status", "rejected")
+        .collection("chats").document(chatId)
+        .collection("messages").document(call.callId)
+        .set(mapOf("status" to "rejected"), SetOptions.merge())
 
     IncomingCallManager.clearCall()
 }

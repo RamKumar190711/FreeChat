@@ -1,4 +1,3 @@
-// ------------------------- ChatScreen.kt -------------------------
 package com.toqsoft.freechat.featureChat.ui
 
 import android.Manifest
@@ -46,23 +45,27 @@ fun ChatScreen(
     val userStatus by viewModel.combinedUserStatus.collectAsState()
     val context = LocalContext.current
 
-    // Launch audio permission
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            viewModel.startCall(otherUserId, audioOnly = true, onAccepted = {
-                navController.navigate("speak/$otherUserId/true") {
-                    popUpTo("calling/$otherUserId/true") { inclusive = true }
-                }
-            }, onRejected = {
-                navController.popBackStack()
-            })
-            navController.navigate("calling/$otherUserId/true")
+            val callId = viewModel.startCall(
+                viewModel.myUserId,
+                otherUserId,
+                audioOnly = true,
+                navController = navController,
+            )
+
+            navController.navigate(
+                "calling/$callId/${viewModel.myUserId}/$otherUserId/true"
+            )
+
         } else {
             Toast.makeText(context, "Microphone permission required", Toast.LENGTH_SHORT).show()
         }
+
     }
+
     LaunchedEffect(otherUserId) {
         viewModel.observeChatWithUser(otherUserId)
     }
@@ -72,8 +75,6 @@ fun ChatScreen(
             .fillMaxSize()
             .background(Color.White)
     ) {
-
-        // Top App Bar
         TopAppBar(
             title = {
                 Column {
@@ -87,11 +88,10 @@ fun ChatScreen(
                 }
             },
             actions = {
-                // Audio call
+                // Audio Call
                 IconButton(onClick = {
-                    if (ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                        == PackageManager.PERMISSION_GRANTED
                     ) {
                         micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     } else {
@@ -106,16 +106,19 @@ fun ChatScreen(
                     )
                 }
 
-                // Video call
+                // Video Call
                 IconButton(onClick = {
-                    viewModel.startCall(otherUserId, audioOnly = false, onAccepted = {
-                        navController.navigate("speak/$otherUserId/false") {
-                            popUpTo("calling/$otherUserId/true") { inclusive = true }
-                        }
-                    }, onRejected = {
-                        navController.popBackStack()
-                    })
-                    navController.navigate("calling/$otherUserId/true")
+
+                    val callId = viewModel.startCall(
+                        viewModel.myUserId,
+                        otherUserId,
+                        audioOnly = false,
+                        navController = navController,
+                    )
+
+                    navController.navigate(
+                        "calling/$callId/${viewModel.myUserId}/$otherUserId/false"
+                    )
                 }) {
                     Icon(
                         painter = painterResource(id = R.drawable.video),
@@ -134,7 +137,7 @@ fun ChatScreen(
             }
         }
 
-        // Input
+        // Input Field
         Row(
             modifier = Modifier
                 .padding(8.dp)
@@ -160,14 +163,13 @@ fun ChatScreen(
                 },
                 shape = RoundedCornerShape(16.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Text("Send")
-            }
+            ) { Text("Send") }
         }
     }
 }
 
-// Message Bubble
+
+// --- Message Bubble ---
 @Composable
 fun MessageBubble(message: ChatMessage, isMe: Boolean) {
     Row(
