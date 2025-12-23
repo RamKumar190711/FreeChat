@@ -12,9 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.navigation.NavController
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.MetadataChanges
 import com.toqsoft.freechat.coreNetwork.AgoraManager
 import kotlinx.coroutines.delay
 
@@ -32,25 +30,23 @@ fun CallingScreen(
     var navigated by remember { mutableStateOf(false) }
     var callLabel by remember { mutableStateOf("Calling") }
 
-    // Timeout for missed call
     LaunchedEffect(Unit) {
-        delay(50000)
+        delay(45000) // 45 Seconds
         if (!navigated) {
             FirebaseFirestore.getInstance()
                 .collection("chats").document(chatId)
                 .collection("messages").document(callId)
                 .update("status", "missed")
-                .addOnCompleteListener { onCancel() }
+            onCancel()
         }
     }
 
-    // Listen for call status updates
     DisposableEffect(callId) {
         val docRef = FirebaseFirestore.getInstance()
             .collection("chats").document(chatId)
             .collection("messages").document(callId)
 
-        val listener = docRef.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, _ ->
+        val listener = docRef.addSnapshotListener { snapshot, _ ->
             if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
 
             val status = snapshot.getString("status")
@@ -58,54 +54,43 @@ fun CallingScreen(
             val token = snapshot.getString("token")
             val delivered = snapshot.getBoolean("delivered") ?: false
 
-            // Update label based on delivered flag
             callLabel = when {
-                status == "accepted" -> "Accepted"
+                status == "accepted" -> "Connecting..."
                 delivered -> "Ringing"
                 else -> "Calling"
             }
 
-            when (status) {
-                "accepted" -> {
-                    if (!navigated && !channel.isNullOrEmpty()) {
-                        navigated = true
-                        if (AgoraManager.rtcEngine == null) AgoraManager.init(context)
-                        AgoraManager.rtcEngine?.joinChannel(token, channel, null, 0)
-                        navController.navigate("speak/$callId/$callerId/$receiverId/$audioOnly/$receiverId") {
-                            popUpTo("calling/$callId/$callerId/$receiverId/$audioOnly") { inclusive = true }
-                            launchSingleTop = true
-                        }
-                    }
+            if (status == "accepted" && !navigated && !channel.isNullOrEmpty()) {
+                navigated = true
+                if (AgoraManager.rtcEngine == null) AgoraManager.init(context)
+                AgoraManager.rtcEngine?.joinChannel(token, channel, null, 0)
+                navController.navigate("speak/$callId/$callerId/$receiverId/$audioOnly/$receiverId") {
+                    popUpTo("calling/$callId/$callerId/$receiverId/$audioOnly") { inclusive = true }
                 }
-                "rejected", "ended", "missed", "declined" -> {
-                    if (!navigated) {
-                        navigated = true
-                        NotificationManagerCompat.from(context).cancel(999)
-                        onCancel()
-                    }
+            } else if (listOf("rejected", "declined", "missed", "ended").contains(status)) {
+                if (!navigated) {
+                    navigated = true
+                    onCancel()
                 }
             }
         }
         onDispose { listener.remove() }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0B1014)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "$callLabel $receiverId...", color = Color.White, fontSize = 24.sp)
-            Spacer(modifier = Modifier.height(20.dp))
+            Text(text = "$callLabel $receiverId", color = Color.White, fontSize = 24.sp)
+            Spacer(modifier = Modifier.height(40.dp))
             Button(
                 onClick = {
                     FirebaseFirestore.getInstance()
                         .collection("chats").document(chatId)
                         .collection("messages").document(callId)
                         .update("status", "declined")
-                        .addOnCompleteListener {
-                            NotificationManagerCompat.from(context).cancel(999)
-                            onCancel()
-                        }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-            ) { Text("Cancel") }
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                modifier = Modifier.size(width = 120.dp, height = 50.dp)
+            ) { Text("Cancel", color = Color.White) }
         }
     }
 }

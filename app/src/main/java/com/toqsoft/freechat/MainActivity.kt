@@ -1,9 +1,13 @@
 package com.toqsoft.freechat
 
 import android.Manifest
+import android.app.KeyguardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -19,6 +24,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.toqsoft.freechat.app.MyFirebaseMessagingService
@@ -35,36 +41,27 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private lateinit var navController: androidx.navigation.NavHostController
-
-    private val requestPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) AgoraManager.init(this)
-        }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-
-        if (
-            ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            // 🔥 INIT IMMEDIATELY
-            AgoraManager.init(this)
-        } else {
-            requestPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
         handleIntent(intent)
+        turnScreenOnAndKeyguard()
 
         setContent {
             FreeChatTheme {
-                navController = rememberNavController()
+                val navController = rememberNavController()
+
+                // We check if the NavController has a backstack yet.
+                // This prevents the Overlay from trying to navigate too early.
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val isNavReady = navBackStackEntry != null
+
                 Box(modifier = Modifier.fillMaxSize()) {
                     AppNavHost(navController)
-                    IncomingCallOverlay(navController)
+
+                    // Only show overlay when navigation system is ready to receive commands
+                    if (isNavReady) {
+                        IncomingCallOverlay(navController)
+                    }
                 }
             }
         }
@@ -76,6 +73,21 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    private fun turnScreenOnAndKeyguard() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            keyguardManager.requestDismissKeyguard(this, null)
+        } else {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+    }
     private fun handleIntent(intent: Intent?) {
         val type = intent?.getStringExtra(EXTRA_TYPE)
         if (type == TYPE_CALL) {
