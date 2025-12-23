@@ -17,12 +17,17 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     companion object {
         const val EXTRA_TYPE = "extra_type"
         const val TYPE_CALL = "CALL"
+        const val TYPE_CALL_ENDED = "CALL_ENDED"
         const val CALL_CHANNEL = "call_channel"
+        const val NOTIF_ID = 999
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         val data = remoteMessage.data
-        if (data["type"] == TYPE_CALL) handleIncomingCall(data)
+        when (data["type"]) {
+            TYPE_CALL -> handleIncomingCall(data)
+            TYPE_CALL_ENDED -> handleCallEnded(data)
+        }
     }
 
     private fun handleIncomingCall(data: Map<String, String>) {
@@ -50,7 +55,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
             val pendingIntent = PendingIntent.getActivity(
                 this@MyFirebaseMessagingService,
-                999, intent,
+                NOTIF_ID, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
@@ -65,8 +70,29 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 .setOngoing(true)
                 .build()
 
-            NotificationManagerCompat.from(this@MyFirebaseMessagingService).notify(999, notification)
+            NotificationManagerCompat.from(this@MyFirebaseMessagingService).notify(NOTIF_ID, notification)
         }
+    }
+
+    private fun handleCallEnded(data: Map<String, String>) {
+        val callerId = data["callerId"] ?: "Unknown"
+        val notificationManager = NotificationManagerCompat.from(this)
+
+        notificationManager.cancel(NOTIF_ID)
+
+        CoroutineScope(Dispatchers.Main).launch {
+            IncomingCallManager.clearCall()
+        }
+
+        val missedNotif = NotificationCompat.Builder(this, CALL_CHANNEL)
+            .setSmallIcon(R.drawable.audio)
+            .setContentTitle("Missed Call")
+            .setContentText("Call from $callerId ended")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+
+        notificationManager.notify(1001, missedNotif)
     }
 
     override fun onCreate() {

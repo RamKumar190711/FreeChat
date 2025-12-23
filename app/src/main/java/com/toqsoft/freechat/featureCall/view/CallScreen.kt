@@ -3,9 +3,7 @@ package com.toqsoft.freechat.featureCall.view
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -13,9 +11,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import androidx.navigation.NavController
 import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.coreNetwork.AgoraManager
+import kotlinx.coroutines.delay
 
 @Composable
 fun CallingScreen(
@@ -32,106 +32,68 @@ fun CallingScreen(
     var navigated by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        Log.d(TAG, "CallingScreen Launched: callId=$callId, chatId=$chatId, caller=$callerId, receiver=$receiverId")
+        delay(50000)
+        if (!navigated) {
+            FirebaseFirestore.getInstance()
+                .collection("chats").document(chatId)
+                .collection("messages").document(callId)
+                .update("status", "missed")
+                .addOnCompleteListener { onCancel() }
+        }
     }
 
     DisposableEffect(callId) {
-        Log.d(TAG, "Attaching SnapshotListener to path: chats/$chatId/messages/$callId")
-
         val docRef = FirebaseFirestore.getInstance()
             .collection("chats").document(chatId)
             .collection("messages").document(callId)
 
-        val listener = docRef.addSnapshotListener { snapshot, error ->
-            Log.d(TAG, "SnapshotListener fired")
-
-            if (error != null) {
-                Log.e(TAG, "Firestore error: ${error.message}")
-                return@addSnapshotListener
-            }
-
-            if (snapshot == null || !snapshot.exists()) {
-                Log.w(TAG, "Snapshot is null or document does not exist yet")
-                return@addSnapshotListener
-            }
-
+        val listener = docRef.addSnapshotListener { snapshot, _ ->
+            if (snapshot == null || !snapshot.exists()) return@addSnapshotListener
             val status = snapshot.getString("status")
             val channel = snapshot.getString("channel")
             val token = snapshot.getString("token")
 
-            Log.d(TAG, "Data Received -> status: $status, channel: $channel, token: ${token?.take(10)}...")
-
             when (status) {
                 "accepted" -> {
-                    Log.d(TAG, "Status is 'accepted'. Checking navigation flags: navigated=$navigated, channelEmpty=${channel.isNullOrEmpty()}")
-
                     if (!navigated && !channel.isNullOrEmpty()) {
-                        Log.d(TAG, "Conditions met. Preparing to join Agora channel: $channel")
                         navigated = true
-
-                        if (AgoraManager.rtcEngine == null) {
-                            Log.d(TAG, "Agora Engine null, initializing now...")
-                            AgoraManager.init(context)
-                        }
-
-                        val joinResult = AgoraManager.rtcEngine?.joinChannel(token, channel, null, 0)
-                        Log.d(TAG, "Agora joinChannel execution result code: $joinResult")
-
-                        val destination = "speak/$callId/$callerId/$receiverId/$audioOnly/$receiverId"
-                        Log.d(TAG, "Navigating to: $destination")
-
-                        navController.navigate(destination) {
-                            Log.d(TAG, "Popping up 'calling' screen from backstack")
+                        if (AgoraManager.rtcEngine == null) AgoraManager.init(context)
+                        AgoraManager.rtcEngine?.joinChannel(token, channel, null, 0)
+                        navController.navigate("speak/$callId/$callerId/$receiverId/$audioOnly/$receiverId") {
                             popUpTo("calling/$callId/$callerId/$receiverId/$audioOnly") { inclusive = true }
                             launchSingleTop = true
                         }
-                    } else if (channel.isNullOrEmpty()) {
-                        Log.e(TAG, "Critical Error: Status is accepted but 'channel' string is missing from Firestore!")
                     }
                 }
-                "rejected", "ended" -> {
-                    Log.d(TAG, "Status changed to $status. Triggering onCancel.")
+                "rejected", "ended", "missed", "declined" -> {
                     if (!navigated) {
                         navigated = true
+                        NotificationManagerCompat.from(context).cancel(999)
                         onCancel()
                     }
                 }
-                else -> {
-                    Log.d(TAG, "Status is currently: $status (waiting for 'accepted')")
-                }
             }
         }
-
-        onDispose {
-            Log.d(TAG, "Disposing listener for callId: $callId")
-            listener.remove()
-        }
+        onDispose { listener.remove() }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Calling $receiverId...",
-                color = Color.White,
-                fontSize = 24.sp
-            )
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = "Calling $receiverId...", color = Color.White, fontSize = 24.sp)
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = {
-                    Log.d(TAG, "User clicked Cancel button")
-                    onCancel()
+                    FirebaseFirestore.getInstance()
+                        .collection("chats").document(chatId)
+                        .collection("messages").document(callId)
+                        .update("status", "declined")
+                        .addOnCompleteListener {
+                            NotificationManagerCompat.from(context).cancel(999)
+                            onCancel()
+                        }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-            ) {
-                Text("Cancel")
-            }
+            ) { Text("Cancel") }
         }
     }
 }

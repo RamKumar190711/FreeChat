@@ -6,14 +6,13 @@ enum class MessageStatus {
     SENT,
     DELIVERED,
     SEEN,
-
-    // 📞 CALL STATES (ADD THESE)
-    ringing,
+    ringing,   // Keep this to prevent crash on old database records
     accepted,
     rejected,
-    ended
+    ended,
+    missed,
+    declined   // Added as per your requirement
 }
-
 
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
