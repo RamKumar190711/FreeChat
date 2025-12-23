@@ -1,6 +1,5 @@
 package com.toqsoft.freechat.featureCall.view
 
-import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -41,19 +40,25 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
     LaunchedEffect(incomingCall?.callId) {
         val call = incomingCall ?: return@LaunchedEffect
         val chatId = listOf(myId, call.callerId).sorted().joinToString("_")
-
-        val listener = FirebaseFirestore.getInstance()
+        val docRef = FirebaseFirestore.getInstance()
             .collection("chats").document(chatId)
             .collection("messages").document(call.callId)
-            .addSnapshotListener { snapshot, _ ->
-                val status = snapshot?.getString("status")
 
-                // Add "declined" and "missed" to this list
-                if (status == "ended" || status == "rejected" || status == "declined" || status == "missed") {
-                    NotificationManagerCompat.from(context).cancel(999)
-                    IncomingCallManager.clearCall()
-                }
+        // Only set delivered once
+        docRef.get().addOnSuccessListener { snapshot ->
+            val alreadyDelivered = snapshot?.getBoolean("delivered") ?: false
+            if (!alreadyDelivered) {
+                docRef.update("delivered", true)
             }
+        }
+
+        val listener = docRef.addSnapshotListener { snapshot, _ ->
+            val status = snapshot?.getString("status")
+            if (status == "ended" || status == "rejected" || status == "declined" || status == "missed") {
+                NotificationManagerCompat.from(context).cancel(999)
+                IncomingCallManager.clearCall()
+            }
+        }
     }
 
     incomingCall?.let { call ->
@@ -97,30 +102,19 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
             ) {
                 Icon(imageVector = Icons.Default.Call, contentDescription = null, tint = Color.Black, modifier = Modifier.size(36.dp))
             }
-
-            Text(
-                text = "Swipe → to answer    |    ← to reject",
-                color = Color.Gray,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
-                fontSize = 14.sp
-            )
         }
     }
 }
 
 private fun acceptCall(call: IncomingCallData, navController: NavController, myUserId: String, context: android.content.Context) {
     val chatId = listOf(myUserId, call.callerId).sorted().joinToString("_")
-    val updateData = mapOf("status" to "accepted", "channel" to call.channel, "token" to call.token)
-
     FirebaseFirestore.getInstance().collection("chats").document(chatId)
         .collection("messages").document(call.callId)
-        .set(updateData, SetOptions.merge())
+        .set(mapOf("status" to "accepted", "channel" to call.channel, "token" to call.token), SetOptions.merge())
         .addOnSuccessListener {
             NotificationManagerCompat.from(context).cancel(999)
             IncomingCallManager.clearCall()
-            navController.navigate("speak/${call.callId}/${call.callerId}/$myUserId/${call.audioOnly}/${call.callerId}") {
-                launchSingleTop = true
-            }
+            navController.navigate("speak/${call.callId}/${call.callerId}/$myUserId/${call.audioOnly}/${call.callerId}")
         }
 }
 
@@ -128,7 +122,7 @@ private fun rejectCall(call: IncomingCallData, myUserId: String, context: androi
     val chatId = listOf(myUserId, call.callerId).sorted().joinToString("_")
     FirebaseFirestore.getInstance().collection("chats").document(chatId)
         .collection("messages").document(call.callId)
-        .set(mapOf("status" to "rejected"), SetOptions.merge())
+        .update("status", "rejected")
         .addOnSuccessListener {
             NotificationManagerCompat.from(context).cancel(999)
             IncomingCallManager.clearCall()
