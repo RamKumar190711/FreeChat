@@ -56,6 +56,27 @@ fun ChatScreen(
         }
     }
 
+    val videoPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val micGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
+        val camGranted = permissions[Manifest.permission.CAMERA] == true
+
+        if (micGranted && camGranted) {
+            val callId = viewModel.startCall(
+                viewModel.myUserId,
+                otherUserId,
+                audioOnly = false,
+                navController = navController
+            )
+            navController.navigate(
+                "calling/$callId/${viewModel.myUserId}/$otherUserId/false"
+            )
+        } else {
+            Toast.makeText(context, "Camera & microphone required", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     LaunchedEffect(otherUserId) {
         viewModel.observeChatWithUser(otherUserId)
     }
@@ -84,8 +105,32 @@ fun ChatScreen(
                 }
 
                 IconButton(onClick = {
-                    val callId = viewModel.startCall(viewModel.myUserId, otherUserId, false, navController)
-                    navController.navigate("calling/$callId/${viewModel.myUserId}/$otherUserId/false")
+                    val micGranted = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    val camGranted = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.CAMERA
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (micGranted && camGranted) {
+                        val callId = viewModel.startCall(
+                            viewModel.myUserId,
+                            otherUserId,
+                            audioOnly = false,
+                            navController = navController
+                        )
+                        navController.navigate(
+                            "calling/$callId/${viewModel.myUserId}/$otherUserId/false"
+                        )
+                    } else {
+                        videoPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.RECORD_AUDIO,
+                                Manifest.permission.CAMERA
+                            )
+                        )
+                    }
                 }) {
                     Icon(painterResource(id = R.drawable.video), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                 }

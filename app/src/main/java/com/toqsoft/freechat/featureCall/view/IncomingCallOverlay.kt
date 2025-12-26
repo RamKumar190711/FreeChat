@@ -1,5 +1,6 @@
 package com.toqsoft.freechat.featureCall.view
 
+import android.content.Context
 import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -29,6 +30,7 @@ import androidx.navigation.NavController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.coreModel.IncomingCallData
+import com.toqsoft.freechat.coreNetwork.AgoraManager
 import com.toqsoft.freechat.coreNetwork.IncomingCallManager
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import kotlinx.coroutines.launch
@@ -187,25 +189,30 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
         }
     }
 }
-private fun acceptCall(call: IncomingCallData, navController: NavController, myId: String, context: android.content.Context) {
+
+private fun acceptCall(call: IncomingCallData, navController: NavController, myId: String, context: Context) {
     val chatId = listOf(myId, call.callerId).sorted().joinToString("_")
-    val data = mapOf("status" to "accepted", "channel" to call.channel, "token" to call.token)
-
-    FirebaseFirestore.getInstance().collection("chats").document(chatId)
+    FirebaseFirestore.getInstance()
+        .collection("chats").document(chatId)
         .collection("messages").document(call.callId)
-        .update(data)
+        .update("status", "accepted")
         .addOnSuccessListener {
-            NotificationManagerCompat.from(context).cancel(999)
             IncomingCallManager.clearCall()
-
-            val route = "speak/${call.callId}/${call.callerId}/$myId/${call.audioOnly}/${call.callerId}"
-
-            navController.navigate(route) {
-                popUpTo(navController.graph.startDestinationId) { inclusive = false }
-                launchSingleTop = true
+            AgoraManager.init(context)
+            val numericUid = AgoraManager.agoraUidFromUserId(myId)
+            AgoraManager.joinChannel(
+                token = call.token,
+                channelName = call.channel,
+            )
+            if (call.audioOnly) {
+                navController.navigate("speak/${call.callId}/${call.callerId}/$myId/true/${call.callerId}")
+            } else {
+                navController.navigate("videoCall/$myId")
             }
         }
 }
+
+
 private fun rejectCall(call: IncomingCallData, myId: String, context: android.content.Context) {
     val chatId = listOf(myId, call.callerId).sorted().joinToString("_")
     FirebaseFirestore.getInstance().collection("chats").document(chatId)

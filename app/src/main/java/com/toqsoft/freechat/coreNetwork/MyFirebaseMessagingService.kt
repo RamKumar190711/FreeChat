@@ -3,6 +3,7 @@ package com.toqsoft.freechat.app
 import android.app.*
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -20,10 +21,13 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         const val TYPE_CALL_ENDED = "CALL_ENDED"
         const val CALL_CHANNEL = "call_channel"
         const val NOTIF_ID = 999
+        private const val TAG = "FCM_SERVICE"
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         val data = remoteMessage.data
+        Log.d(TAG, "Message received: ${data["type"]}")
+
         when (data["type"]) {
             TYPE_CALL -> handleIncomingCall(data)
             TYPE_CALL_ENDED -> handleCallEnded(data)
@@ -36,19 +40,21 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val callId = data["callId"] ?: ""
             val channel = data["channel"] ?: ""
             val token = data["token"] ?: ""
+            val uid = data["uid"]?.toIntOrNull() ?: 0
             val receiverId = data["receiverId"] ?: ""
-            val audioOnly = data["audioOnly"]?.toBoolean() ?: true
+            val audioOnly = data["audioOnly"]?.toBoolean() ?: false
 
             IncomingCallManager.showIncomingCall(callerId, receiverId, channel, token, callId, audioOnly)
 
             val intent = Intent(this@MyFirebaseMessagingService, MainActivity::class.java).apply {
                 action = "ACTION_CALL_$callId"
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(EXTRA_TYPE, TYPE_CALL)
+                putExtra("EXTRA_TYPE", TYPE_CALL)
                 putExtra("EXTRA_CALLER_ID", callerId)
                 putExtra("EXTRA_CALL_ID", callId)
                 putExtra("EXTRA_CHANNEL", channel)
                 putExtra("EXTRA_TOKEN", token)
+                putExtra("EXTRA_UID", uid)
                 putExtra("EXTRA_RECEIVER_ID", receiverId)
                 putExtra("EXTRA_AUDIO_ONLY", audioOnly)
             }
@@ -97,9 +103,18 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onCreate() {
         super.onCreate()
+        // Create the notification channel required for Android O+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(NotificationChannel(CALL_CHANNEL, "Calls", NotificationManager.IMPORTANCE_HIGH))
+            val channel = NotificationChannel(
+                CALL_CHANNEL,
+                "Incoming Calls",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                enableVibration(true)
+            }
+            manager?.createNotificationChannel(channel)
         }
     }
 }

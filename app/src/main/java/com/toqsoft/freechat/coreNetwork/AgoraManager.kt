@@ -2,73 +2,72 @@ package com.toqsoft.freechat.coreNetwork
 
 import android.content.Context
 import android.util.Log
+import android.view.SurfaceView
+import com.toqsoft.freechat.featureVideo.view.VideoCallState
 import io.agora.rtc2.*
+import io.agora.rtc2.video.VideoCanvas
 
 object AgoraManager {
-
     var rtcEngine: RtcEngine? = null
-        private set
 
     private val rtcEventHandler = object : IRtcEngineEventHandler() {
-
         override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
-            Log.d("AGORA", "✅ Joined channel=$channel uid=$uid")
+            Log.d("AGORA_DEBUG", "✅ SUCCESS: Joined channel=$channel with UID=$uid")
         }
 
         override fun onUserJoined(uid: Int, elapsed: Int) {
-            Log.d("AGORA", "👤 REMOTE USER JOINED uid=$uid")
+            Log.d("AGORA_DEBUG", "👤 EVENT: Remote user joined with UID=$uid")
+            VideoCallState.remoteUid.value = uid
         }
 
         override fun onUserOffline(uid: Int, reason: Int) {
-            Log.e("AGORA", "❌ REMOTE USER LEFT uid=$uid reason=$reason")
-            CallState.onRemoteLeft?.invoke()
+            Log.d("AGORA_DEBUG", "❌ EVENT: Remote user $uid went offline")
+            VideoCallState.remoteUid.value = null
         }
 
-        override fun onAudioVolumeIndication(
-            speakers: Array<AudioVolumeInfo>,
-            totalVolume: Int
-        ) {
-            speakers.forEach { info ->
-                if (info.uid == 0) {
-                    Log.d("AGORA_AUDIO", "🎤 LOCAL MIC volume=${info.volume}")
-                } else {
-                    Log.d("AGORA_AUDIO", "🔊 REMOTE uid=${info.uid} volume=${info.volume}")
-                }
-            }
+        override fun onError(err: Int) {
+            Log.e("AGORA_DEBUG", "🔥 ERROR: Agora code=$err")
         }
+    }
+
+    fun agoraUidFromUserId(userId: String): Int {
+        return userId.hashCode() and 0x7FFFFFFF
     }
 
     fun init(context: Context) {
         if (rtcEngine != null) return
-        rtcEngine = RtcEngine.create(context.applicationContext, AgoraConfig.APP_ID, rtcEventHandler)
-        rtcEngine?.apply {
-            setChannelProfile(Constants.CHANNEL_PROFILE_COMMUNICATION)
-            enableAudio()
-            enableLocalAudio(true)
-            muteLocalAudioStream(false)
-            setEnableSpeakerphone(true)
-            enableAudioVolumeIndication(200, 3, true)
+
+        val config = RtcEngineConfig().apply {
+            mContext = context.applicationContext
+            mAppId = AgoraConfig.APP_ID
+            mEventHandler = rtcEventHandler
         }
-        Log.d("AGORA", "🎧 Agora Initialized")
+
+        rtcEngine = RtcEngine.create(config)
+        rtcEngine?.apply {
+            enableVideo()
+            setChannelProfile(Constants.CHANNEL_PROFILE_COMMUNICATION)
+        }
     }
 
-    fun generateToken(channel: String): String {
-        // For testing without certificate, return empty string
-        return ""
+    fun joinChannel(token: String, channelName: String) {
+        val options = ChannelMediaOptions().apply {
+            autoSubscribeAudio = true
+            autoSubscribeVideo = true
+            publishCameraTrack = true
+            publishMicrophoneTrack = true
+        }
+
+        rtcEngine?.joinChannel(token, channelName, 0, options) // ✅ UID = 0
+        Log.d("AGORA_DEBUG", "Join Request result:")
+
     }
 
-    fun joinChannel(token: String, channel: String, userId: String = "0") {
-        val uid = userId.hashCode() and 0x7FFFFFFF
-        rtcEngine?.joinChannel(token, channel, null, uid)
-    }
+
 
     fun leaveChannel() {
+        rtcEngine?.stopPreview()
         rtcEngine?.leaveChannel()
-    }
-
-    fun destroy() {
-        leaveChannel()
-        RtcEngine.destroy()
-        rtcEngine = null
+        VideoCallState.remoteUid.value = null
     }
 }

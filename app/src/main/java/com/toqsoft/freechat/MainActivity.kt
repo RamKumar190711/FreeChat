@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
@@ -27,12 +28,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.google.firebase.auth.FirebaseAuth
 import com.toqsoft.freechat.app.MyFirebaseMessagingService
 import com.toqsoft.freechat.coreNetwork.*
 import com.toqsoft.freechat.featureCall.view.*
 import com.toqsoft.freechat.featureChat.ui.ChatScreen
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import com.toqsoft.freechat.featureList.view.UserListScreen
+import com.toqsoft.freechat.featureVideo.view.VideoCallScreen
 import com.toqsoft.freechat.ui.theme.FreeChatTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -45,6 +48,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
         turnScreenOnAndKeyguard()
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                1001
+            )
+            return
+        }
+
 
         setContent {
             FreeChatTheme {
@@ -140,6 +156,18 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                 audioOnly = entry.arguments!!.getBoolean("audioOnly"),
                 navController = navController,
                 onCancel = { navController.popBackStack() }
+            )
+        }
+
+        // Inside your NavHost
+        composable("videoCall/{callerId}") { backStackEntry ->
+            val callerId = backStackEntry.arguments?.getString("callerId") ?: ""
+
+            val numericUid = AgoraManager.agoraUidFromUserId(callerId)
+
+            VideoCallScreen(
+                localUid = numericUid,
+                onEndCall = { navController.popBackStack() }
             )
         }
 
