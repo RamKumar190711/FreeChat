@@ -37,12 +37,13 @@ fun VideoCallScreen(
 ) {
     val remoteUid by VideoCallState.remoteUid
     var controlsVisible by remember { mutableStateOf(true) }
+    var isVideoMuted by remember { mutableStateOf(false) }
 
     val chatId = remember {
         listOf(callerId, receiverId).sorted().joinToString("_")
     }
 
-    // 🔴 LISTEN FOR REMOTE END CALL (THIS WAS MISSING)
+    // 🔴 LISTEN FOR REMOTE END
     DisposableEffect(callId) {
         val listener = FirebaseFirestore.getInstance()
             .collection("chats")
@@ -50,16 +51,13 @@ fun VideoCallScreen(
             .collection("messages")
             .document(callId)
             .addSnapshotListener { snapshot, _ ->
-                val status = snapshot?.getString("status")
-                if (status == "ended") {
-                    Log.d("VIDEO_DEBUG", "Call ended remotely")
+                if (snapshot?.getString("status") == "ended") {
                     AgoraManager.leaveChannel()
                     navController.navigate("users") {
                         popUpTo("users") { inclusive = true }
                     }
                 }
             }
-
         onDispose { listener.remove() }
     }
 
@@ -69,7 +67,8 @@ fun VideoCallScreen(
             .background(Color.Black)
             .clickable { controlsVisible = true }
     ) {
-        // Remote video
+
+        // REMOTE VIDEO
         if (remoteUid != null) {
             RemoteVideoView(remoteUid!!)
         } else {
@@ -80,16 +79,18 @@ fun VideoCallScreen(
             )
         }
 
-        // Local preview
-        Box(
-            modifier = Modifier
-                .size(110.dp, 160.dp)
-                .align(Alignment.TopEnd)
-                .padding(12.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.DarkGray)
-        ) {
-            LocalVideoView()
+        // LOCAL PREVIEW (ONLY WHEN VIDEO IS ON)
+        if (!isVideoMuted) {
+            Box(
+                modifier = Modifier
+                    .size(110.dp, 160.dp)
+                    .align(Alignment.TopEnd)
+                    .padding(12.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.DarkGray)
+            ) {
+                LocalVideoView()
+            }
         }
 
         AnimatedVisibility(
@@ -99,6 +100,19 @@ fun VideoCallScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             VideoControls(
+                isVideoMuted = isVideoMuted,
+                onVideoToggle = { muted ->
+                    isVideoMuted = muted
+                    AgoraManager.rtcEngine?.muteLocalVideoStream(muted)
+
+                    if (muted) {
+                        AgoraManager.rtcEngine?.stopPreview()
+                        AgoraManager.rtcEngine?.disableVideo()
+                    } else {
+                        AgoraManager.rtcEngine?.enableVideo()
+                        AgoraManager.rtcEngine?.startPreview()
+                    }
+                },
                 onEndCall = {
                     endVideoCall(callId, callerId, receiverId)
                     AgoraManager.leaveChannel()
@@ -122,9 +136,7 @@ fun VideoCallScreen(
 fun LocalVideoView() {
     val context = LocalContext.current
     val surfaceView = remember {
-        SurfaceView(context).apply {
-            setZOrderMediaOverlay(true)
-        }
+        SurfaceView(context).apply { setZOrderMediaOverlay(true) }
     }
 
     DisposableEffect(surfaceView) {
@@ -134,7 +146,6 @@ fun LocalVideoView() {
                 AgoraManager.rtcEngine?.enableVideo()
                 AgoraManager.rtcEngine?.startPreview()
             }
-
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) {}
         }
@@ -152,9 +163,7 @@ fun LocalVideoView() {
 fun RemoteVideoView(uid: Int) {
     val context = LocalContext.current
     val surfaceView = remember(uid) {
-        SurfaceView(context).apply {
-            setZOrderOnTop(false)
-        }
+        SurfaceView(context).apply { setZOrderOnTop(false) }
     }
 
     DisposableEffect(uid) {
@@ -162,7 +171,6 @@ fun RemoteVideoView(uid: Int) {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 AgoraManager.setupRemoteVideo(surfaceView, uid)
             }
-
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) {}
         }
@@ -176,11 +184,13 @@ fun RemoteVideoView(uid: Int) {
     )
 }
 
-
 @Composable
-private fun VideoControls(onEndCall: () -> Unit) {
+private fun VideoControls(
+    isVideoMuted: Boolean,
+    onVideoToggle: (Boolean) -> Unit,
+    onEndCall: () -> Unit
+) {
     var isAudioMuted by remember { mutableStateOf(false) }
-    var isVideoMuted by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -189,7 +199,10 @@ private fun VideoControls(onEndCall: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ControlButton(R.drawable.mic) {
+
+        ControlButton(
+            icon = if (isAudioMuted) R.drawable.mic_off else R.drawable.mic
+        ) {
             isAudioMuted = !isAudioMuted
             AgoraManager.rtcEngine?.muteLocalAudioStream(isAudioMuted)
         }
@@ -198,12 +211,17 @@ private fun VideoControls(onEndCall: () -> Unit) {
             AgoraManager.rtcEngine?.switchCamera()
         }
 
-        ControlButton(R.drawable.video) {
-            isVideoMuted = !isVideoMuted
-            AgoraManager.rtcEngine?.muteLocalVideoStream(isVideoMuted)
+        ControlButton(
+            icon = if (isVideoMuted) R.drawable.video_off else R.drawable.video
+        ) {
+            onVideoToggle(!isVideoMuted)
         }
 
-        ControlButton(R.drawable.end, background = Color.Red, size = 64.dp) {
+        ControlButton(
+            R.drawable.end,
+            background = Color.Red,
+            size = 64.dp
+        ) {
             onEndCall()
         }
     }
