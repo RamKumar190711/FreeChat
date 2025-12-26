@@ -199,15 +199,20 @@ private fun acceptCall(call: IncomingCallData, navController: NavController, myI
         .addOnSuccessListener {
             IncomingCallManager.clearCall()
             AgoraManager.init(context)
-            val numericUid = AgoraManager.agoraUidFromUserId(myId)
             AgoraManager.joinChannel(
+                context = context,
                 token = call.token,
                 channelName = call.channel,
+                userId = myId
             )
+
             if (call.audioOnly) {
                 navController.navigate("speak/${call.callId}/${call.callerId}/$myId/true/${call.callerId}")
             } else {
-                navController.navigate("videoCall/$myId")
+                navController.navigate(
+                    "videoCall/${call.callId}/${call.callerId}/$myId"
+                )
+
             }
         }
 }

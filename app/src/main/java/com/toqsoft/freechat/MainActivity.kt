@@ -44,37 +44,46 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
+    // Permission launcher for camera & microphone
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
+        val micGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
+
+        if (cameraGranted && micGranted) {
+            // Permissions granted, ready to join Agora channel
+        } else {
+            Toast.makeText(this, "Camera and Microphone permissions are required", Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         handleIntent(intent)
         turnScreenOnAndKeyguard()
-        if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this,
-                arrayOf(Manifest.permission.RECORD_AUDIO),
-                1001
-            )
-            return
-        }
 
+        // Request permissions if not granted
+        val neededPermissions = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
+            neededPermissions.add(Manifest.permission.CAMERA)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
+            neededPermissions.add(Manifest.permission.RECORD_AUDIO)
+
+        if (neededPermissions.isNotEmpty()) {
+            requestPermissionsLauncher.launch(neededPermissions.toTypedArray())
+        }
 
         setContent {
             FreeChatTheme {
                 val navController = rememberNavController()
-
-                // We check if the NavController has a backstack yet.
-                // This prevents the Overlay from trying to navigate too early.
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val isNavReady = navBackStackEntry != null
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     AppNavHost(navController)
 
-                    // Only show overlay when navigation system is ready to receive commands
                     if (isNavReady) {
                         IncomingCallOverlay(navController)
                     }
@@ -104,6 +113,7 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
+
     private fun handleIntent(intent: Intent?) {
         val type = intent?.getStringExtra(EXTRA_TYPE)
         if (type == TYPE_CALL) {
@@ -159,17 +169,28 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
             )
         }
 
-        // Inside your NavHost
-        composable("videoCall/{callerId}") { backStackEntry ->
-            val callerId = backStackEntry.arguments?.getString("callerId") ?: ""
+        composable(
+            route = "videoCall/{callId}/{callerId}/{receiverId}",
+            arguments = listOf(
+                navArgument("callId") { type = NavType.StringType },
+                navArgument("callerId") { type = NavType.StringType },
+                navArgument("receiverId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
 
-            val numericUid = AgoraManager.agoraUidFromUserId(callerId)
+            val callId = backStackEntry.arguments?.getString("callId") ?: ""
+            val callerId = backStackEntry.arguments?.getString("callerId") ?: ""
+            val receiverId = backStackEntry.arguments?.getString("receiverId") ?: ""
 
             VideoCallScreen(
-                localUid = numericUid,
-                onEndCall = { navController.popBackStack() }
+                navController = navController,
+                callId = callId,
+                callerId = callerId,
+                receiverId = receiverId
             )
         }
+
+
 
 
 

@@ -2,41 +2,42 @@ package com.toqsoft.freechat.coreNetwork
 
 import android.content.Context
 import android.util.Log
-import android.view.SurfaceView
 import com.toqsoft.freechat.featureVideo.view.VideoCallState
 import io.agora.rtc2.*
 import io.agora.rtc2.video.VideoCanvas
+import io.agora.rtc2.video.VideoEncoderConfiguration
 
 object AgoraManager {
+
     var rtcEngine: RtcEngine? = null
+    var localUid: Int = 0
+        private set
 
     private val rtcEventHandler = object : IRtcEngineEventHandler() {
+
         override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
-            Log.d("AGORA_DEBUG", "✅ SUCCESS: Joined channel=$channel with UID=$uid")
+            Log.d("AGORA_DEBUG", "✅ Joined channel: $channel, uid=$uid, elapsed=$elapsed")
         }
 
         override fun onUserJoined(uid: Int, elapsed: Int) {
-            Log.d("AGORA_DEBUG", "👤 EVENT: Remote user joined with UID=$uid")
+            Log.d("AGORA_DEBUG", "👤 Remote user joined uid=$uid, elapsed=$elapsed")
             VideoCallState.remoteUid.value = uid
         }
 
         override fun onUserOffline(uid: Int, reason: Int) {
-            Log.d("AGORA_DEBUG", "❌ EVENT: Remote user $uid went offline")
+            Log.d("AGORA_DEBUG", "❌ Remote user offline uid=$uid, reason=$reason")
             VideoCallState.remoteUid.value = null
         }
 
         override fun onError(err: Int) {
-            Log.e("AGORA_DEBUG", "🔥 ERROR: Agora code=$err")
+            Log.e("AGORA_DEBUG", "🔥 Agora error=$err")
         }
-    }
-
-    fun agoraUidFromUserId(userId: String): Int {
-        return userId.hashCode() and 0x7FFFFFFF
     }
 
     fun init(context: Context) {
         if (rtcEngine != null) return
 
+        Log.d("AGORA_DEBUG", "Initializing RtcEngine")
         val config = RtcEngineConfig().apply {
             mContext = context.applicationContext
             mAppId = AgoraConfig.APP_ID
@@ -44,30 +45,66 @@ object AgoraManager {
         }
 
         rtcEngine = RtcEngine.create(config)
+
         rtcEngine?.apply {
-            enableVideo()
             setChannelProfile(Constants.CHANNEL_PROFILE_COMMUNICATION)
+            enableVideo()
+            setVideoEncoderConfiguration(
+                VideoEncoderConfiguration(
+                    VideoEncoderConfiguration.VD_640x360,
+                    VideoEncoderConfiguration.FRAME_RATE.FRAME_RATE_FPS_15,
+                    VideoEncoderConfiguration.STANDARD_BITRATE,
+                    VideoEncoderConfiguration.ORIENTATION_MODE.ORIENTATION_MODE_FIXED_PORTRAIT
+                )
+            )
         }
     }
 
-    fun joinChannel(token: String, channelName: String) {
+    fun joinChannel(
+        context: Context,
+        token: String,
+        channelName: String,
+        userId: String
+    ) {
+        if (rtcEngine == null) init(context)
+
+        localUid = (userId.hashCode() and 0x7FFFFFFF)
+        Log.d("AGORA_DEBUG", "Local UID set to $localUid")
+
+        // ENABLE LOCAL VIDEO AND START PREVIEW
+        rtcEngine?.enableVideo()
+        rtcEngine?.startPreview()
+
         val options = ChannelMediaOptions().apply {
-            autoSubscribeAudio = true
-            autoSubscribeVideo = true
             publishCameraTrack = true
             publishMicrophoneTrack = true
+            autoSubscribeAudio = true
+            autoSubscribeVideo = true
+            clientRoleType = Constants.CLIENT_ROLE_BROADCASTER
         }
 
-        rtcEngine?.joinChannel(token, channelName, 0, options) // ✅ UID = 0
-        Log.d("AGORA_DEBUG", "Join Request result:")
-
+        Log.d("AGORA_DEBUG", "Joining channel $channelName with token $token")
+        rtcEngine?.joinChannel(token, channelName, localUid, options)
     }
 
+    fun setupLocalVideo(surfaceView: android.view.SurfaceView) {
+        Log.d("AGORA_DEBUG", "Setting up local video for UID=$localUid")
+        rtcEngine?.setupLocalVideo(
+            VideoCanvas(surfaceView, VideoCanvas.RENDER_MODE_FIT, localUid)
+        )
+    }
 
+    fun setupRemoteVideo(surfaceView: android.view.SurfaceView, uid: Int) {
+        Log.d("AGORA_DEBUG", "Setting up remote video for UID=$uid")
+        rtcEngine?.setupRemoteVideo(
+            VideoCanvas(surfaceView, VideoCanvas.RENDER_MODE_FIT, uid)
+        )
+    }
 
     fun leaveChannel() {
         rtcEngine?.stopPreview()
         rtcEngine?.leaveChannel()
         VideoCallState.remoteUid.value = null
+        Log.d("AGORA_DEBUG", "Left channel and stopped preview")
     }
 }

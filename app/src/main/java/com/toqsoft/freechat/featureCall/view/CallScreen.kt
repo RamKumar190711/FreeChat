@@ -76,12 +76,14 @@ fun CallingScreen(
             if (status == "accepted" && !joinedAgora && !channel.isNullOrEmpty() && token.isNotEmpty()) {
                 joinedAgora = true
                 AgoraManager.init(context)
-                val numericUid = AgoraManager.agoraUidFromUserId(callerId)
 
                 AgoraManager.joinChannel(
+                    context = context,
                     token = token,
                     channelName = channel,
+                    userId = callerId
                 )
+
             }
 
             if (status == "accepted" && !navigated) {
@@ -89,8 +91,9 @@ fun CallingScreen(
                 val targetRoute = if (audioOnly) {
                     "speak/$callId/$callerId/$receiverId/true/$receiverId"
                 } else {
-                    "videoCall/$callerId"
+                    "videoCall/$callId/$callerId/$receiverId"
                 }
+
                 navController.navigate(targetRoute) { popUpTo("calling") { inclusive = true } }
             }
 

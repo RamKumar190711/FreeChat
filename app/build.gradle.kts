@@ -92,5 +92,5 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx") // optional
-    implementation("io.agora.rtc:voice-sdk:4.2.6")
+    implementation("io.agora.rtc:full-sdk:4.2.6")
 }

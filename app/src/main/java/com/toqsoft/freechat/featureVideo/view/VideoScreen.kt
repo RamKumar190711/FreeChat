@@ -1,6 +1,7 @@
 package com.toqsoft.freechat.featureVideo.view
 
 import android.util.Log
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -8,39 +9,58 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.navigation.NavController
+import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.R
 import com.toqsoft.freechat.coreNetwork.AgoraManager
-import io.agora.rtc2.video.VideoCanvas
 import kotlinx.coroutines.delay
 
 @Composable
 fun VideoCallScreen(
-    localUid: Int,
-    onEndCall: () -> Unit
+    navController: NavController,
+    callId: String,
+    callerId: String,
+    receiverId: String
 ) {
     val remoteUid by VideoCallState.remoteUid
     var controlsVisible by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
-        AgoraManager.rtcEngine?.enableVideo()
-        AgoraManager.rtcEngine?.startPreview()
+    val chatId = remember {
+        listOf(callerId, receiverId).sorted().joinToString("_")
     }
 
-    LaunchedEffect(controlsVisible) {
-        if (controlsVisible) {
-            delay(3000)
-            controlsVisible = false
-        }
+    // 🔴 LISTEN FOR REMOTE END CALL (THIS WAS MISSING)
+    DisposableEffect(callId) {
+        val listener = FirebaseFirestore.getInstance()
+            .collection("chats")
+            .document(chatId)
+            .collection("messages")
+            .document(callId)
+            .addSnapshotListener { snapshot, _ ->
+                val status = snapshot?.getString("status")
+                if (status == "ended") {
+                    Log.d("VIDEO_DEBUG", "Call ended remotely")
+                    AgoraManager.leaveChannel()
+                    navController.navigate("users") {
+                        popUpTo("users") { inclusive = true }
+                    }
+                }
+            }
+
+        onDispose { listener.remove() }
     }
 
     Box(
@@ -49,6 +69,7 @@ fun VideoCallScreen(
             .background(Color.Black)
             .clickable { controlsVisible = true }
     ) {
+        // Remote video
         if (remoteUid != null) {
             RemoteVideoView(remoteUid!!)
         } else {
@@ -59,6 +80,7 @@ fun VideoCallScreen(
             )
         }
 
+        // Local preview
         Box(
             modifier = Modifier
                 .size(110.dp, 160.dp)
@@ -76,13 +98,90 @@ fun VideoCallScreen(
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            VideoControls(onEndCall)
+            VideoControls(
+                onEndCall = {
+                    endVideoCall(callId, callerId, receiverId)
+                    AgoraManager.leaveChannel()
+                    navController.navigate("users") {
+                        popUpTo("users") { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        LaunchedEffect(controlsVisible) {
+            if (controlsVisible) {
+                delay(3000)
+                controlsVisible = false
+            }
         }
     }
 }
 
 @Composable
+fun LocalVideoView() {
+    val context = LocalContext.current
+    val surfaceView = remember {
+        SurfaceView(context).apply {
+            setZOrderMediaOverlay(true)
+        }
+    }
+
+    DisposableEffect(surfaceView) {
+        val callback = object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                AgoraManager.setupLocalVideo(surfaceView)
+                AgoraManager.rtcEngine?.enableVideo()
+                AgoraManager.rtcEngine?.startPreview()
+            }
+
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) {}
+        }
+        surfaceView.holder.addCallback(callback)
+        onDispose { surfaceView.holder.removeCallback(callback) }
+    }
+
+    AndroidView(
+        factory = { surfaceView },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
+fun RemoteVideoView(uid: Int) {
+    val context = LocalContext.current
+    val surfaceView = remember(uid) {
+        SurfaceView(context).apply {
+            setZOrderOnTop(false)
+        }
+    }
+
+    DisposableEffect(uid) {
+        val callback = object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                AgoraManager.setupRemoteVideo(surfaceView, uid)
+            }
+
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) {}
+        }
+        surfaceView.holder.addCallback(callback)
+        onDispose { surfaceView.holder.removeCallback(callback) }
+    }
+
+    AndroidView(
+        factory = { surfaceView },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+
+@Composable
 private fun VideoControls(onEndCall: () -> Unit) {
+    var isAudioMuted by remember { mutableStateOf(false) }
+    var isVideoMuted by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -91,20 +190,20 @@ private fun VideoControls(onEndCall: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         ControlButton(R.drawable.mic) {
-            AgoraManager.rtcEngine?.muteLocalAudioStream(false)
+            isAudioMuted = !isAudioMuted
+            AgoraManager.rtcEngine?.muteLocalAudioStream(isAudioMuted)
         }
+
         ControlButton(R.drawable.switch_camera) {
             AgoraManager.rtcEngine?.switchCamera()
         }
+
         ControlButton(R.drawable.video) {
-            AgoraManager.rtcEngine?.muteLocalVideoStream(false)
+            isVideoMuted = !isVideoMuted
+            AgoraManager.rtcEngine?.muteLocalVideoStream(isVideoMuted)
         }
-        ControlButton(
-            R.drawable.end,
-            background = Color.Red,
-            size = 64.dp
-        ) {
-            AgoraManager.leaveChannel()
+
+        ControlButton(R.drawable.end, background = Color.Red, size = 64.dp) {
             onEndCall()
         }
     }
@@ -119,9 +218,7 @@ private fun ControlButton(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = Modifier
-            .size(size)
-            .background(background, CircleShape)
+        modifier = Modifier.size(size).background(background, CircleShape)
     ) {
         Icon(
             painter = painterResource(icon),
@@ -132,31 +229,15 @@ private fun ControlButton(
     }
 }
 
-@Composable
-fun LocalVideoView() {
-    AndroidView(
-        factory = { context ->
-            SurfaceView(context).apply {
-                setZOrderMediaOverlay(true)
-                AgoraManager.rtcEngine?.setupLocalVideo(
-                    VideoCanvas(this, VideoCanvas.RENDER_MODE_HIDDEN, 0)
-                )
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
-}
-
-
-@Composable
-fun RemoteVideoView(uid: Int) {
-    AndroidView(
-        factory = { context -> SurfaceView(context) },
-        update = { view ->
-            AgoraManager.rtcEngine?.setupRemoteVideo(
-                VideoCanvas(view, VideoCanvas.RENDER_MODE_HIDDEN, uid)
-            )
-        },
-        modifier = Modifier.fillMaxSize()
-    )
+private fun endVideoCall(
+    callId: String,
+    callerId: String,
+    receiverId: String
+) {
+    FirebaseFirestore.getInstance()
+        .collection("chats")
+        .document(listOf(callerId, receiverId).sorted().joinToString("_"))
+        .collection("messages")
+        .document(callId)
+        .update("status", "ended")
 }
