@@ -48,17 +48,26 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // Permission launcher for camera & microphone
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val cameraGranted = permissions[Manifest.permission.CAMERA] ?: false
         val micGranted = permissions[Manifest.permission.RECORD_AUDIO] ?: false
 
-        if (cameraGranted && micGranted) {
-            // Permissions granted, ready to join Agora channel
-        } else {
-            Toast.makeText(this, "Camera and Microphone permissions are required", Toast.LENGTH_LONG).show()
+        if (!cameraGranted || !micGranted) {
+            Toast.makeText(
+                this,
+                "Camera and Microphone permissions are required",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private val requestNotificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(this, "Notifications permission denied", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -67,43 +76,43 @@ class MainActivity : ComponentActivity() {
 
         handleIntent(intent)
         turnScreenOnAndKeyguard()
+
+        // Status bar
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val window = (this as ComponentActivity).window
-        val insetsController = WindowInsetsControllerCompat(window, window.decorView)
-
-        // Set status bar background to white
+        val windowInsetsController = WindowInsetsControllerCompat(window, window.decorView)
         window.statusBarColor = Color.White.toArgb()
-        // Make status bar icons dark (for white background)
-        insetsController.isAppearanceLightStatusBars = true
+        windowInsetsController.isAppearanceLightStatusBars = true
 
-
-        // Request permissions if not granted
-        val neededPermissions = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)
-            neededPermissions.add(Manifest.permission.CAMERA)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
-            neededPermissions.add(Manifest.permission.RECORD_AUDIO)
-
-        if (neededPermissions.isNotEmpty()) {
-            requestPermissionsLauncher.launch(neededPermissions.toTypedArray())
-        }
+        checkNotificationPermission()
+        requestCameraAndMicPermissions()
 
         setContent {
             FreeChatTheme {
                 val navController = rememberNavController()
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val isNavReady = navBackStackEntry != null
-
                 Box(modifier = Modifier.fillMaxSize()) {
                     AppNavHost(navController)
-
-                    if (isNavReady) {
-                        IncomingCallOverlay(navController)
-                    }
+                    IncomingCallOverlay(navController)
                 }
             }
         }
     }
+
+    private fun requestCameraAndMicPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) permissionsToRequest.add(Manifest.permission.CAMERA)
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+
+        if (permissionsToRequest.isNotEmpty()) {
+            requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+    }
+
+
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -111,6 +120,18 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    private fun checkNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Request the permission
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
     private fun turnScreenOnAndKeyguard() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -227,9 +248,11 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                 audioOnly = args?.getBoolean("audioOnly") ?: true,
                 onHangUp = {
                     navController.navigate("users") {
-                        popUpTo(0) { inclusive = true }
+                        popUpTo("users") { inclusive = false }
+                        launchSingleTop = true
                     }
                 }
+
             )
         }
     }

@@ -30,6 +30,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.toqsoft.freechat.R
+import com.toqsoft.freechat.coreNetwork.VoiceFeedback
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import com.toqsoft.freechat.featureList.viewModel.UserListViewModel
 import com.toqsoft.freechat.featureVoiceListening.VoiceRecognitionHelper
@@ -51,7 +52,6 @@ fun UserListScreen(
     val unreadCounts by viewModel.unreadCounts.collectAsState()
     val lastMessages by viewModel.lastMessages.collectAsState()
     val liveText = remember { mutableStateOf("") }
-
     var inputName by remember { mutableStateOf(myUsername) }
     LaunchedEffect(myUsername) { inputName = myUsername }
 
@@ -59,6 +59,7 @@ fun UserListScreen(
     var newUserName by remember { mutableStateOf("") }
     var showListening by remember { mutableStateOf(false) }
 
+    var isSaved by remember { mutableStateOf(false) }
 
     // Request microphone permission
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -70,6 +71,17 @@ fun UserListScreen(
             Log.d("Voice", "Mic permission denied")
         }
     }
+    val voiceFeedback = remember {
+        VoiceFeedback(context)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            voiceFeedback.release()
+        }
+    }
+
+
 
     Scaffold(
         floatingActionButton = {
@@ -102,6 +114,7 @@ fun UserListScreen(
                     }
                 )
 
+
                 if (showListening) {
                     val voiceHelper = remember(context) {
                         VoiceRecognitionHelper(
@@ -110,34 +123,85 @@ fun UserListScreen(
                             onFinalResult = { final ->
                                 liveText.value = final
                                 Log.d("SPEECH", "You said: $final")
+
                                 val cmd = final.lowercase().trim()
-                                when {
+                                val myName = myUsername.ifEmpty { "friend" }
+
+                                // ✅ Only trigger ONE feedback per input
+                                val spokenHandled = when {
+                                    // OPEN CHAT
                                     cmd.startsWith("open chat") -> {
                                         val parts = cmd.split(" ")
-                                        if (parts.size >= 3) onOpenChat(parts.drop(2).joinToString(" "))
+                                        if (parts.size >= 3) {
+                                            onOpenChat(parts.drop(2).joinToString(" "))
+                                            true // handled successfully
+                                        } else {
+                                            voiceFeedback.speak(
+                                                "Hey $myName. Wrong command. Please say: open chat followed by username."
+                                            )
+                                            true
+                                        }
                                     }
+
+                                    // AUDIO CALL
                                     cmd.startsWith("audio call") -> {
                                         val parts = cmd.split(" ")
                                         if (parts.size >= 3) {
                                             val user = parts.drop(2).joinToString(" ")
-                                            val callId = chatViewModel.startCall(chatViewModel.myUserId, user, true, navController)
-                                            navController.navigate("calling/$callId/${chatViewModel.myUserId}/$user/true")
+                                            val callId = chatViewModel.startCall(
+                                                chatViewModel.myUserId,
+                                                user,
+                                                true,
+                                                navController
+                                            )
+                                            navController.navigate(
+                                                "calling/$callId/${chatViewModel.myUserId}/$user/true"
+                                            )
+                                            true
+                                        } else {
+                                            voiceFeedback.speak(
+                                                "Hey $myName. Wrong command. Please say: audio call followed by username."
+                                            )
+                                            true
                                         }
                                     }
+
+                                    // VIDEO CALL
                                     cmd.startsWith("video call") -> {
                                         val parts = cmd.split(" ")
                                         if (parts.size >= 3) {
                                             val user = parts.drop(2).joinToString(" ")
-                                            val callId = chatViewModel.startCall(chatViewModel.myUserId, user, false, navController)
-                                            navController.navigate("calling/$callId/${chatViewModel.myUserId}/$user/false")
+                                            val callId = chatViewModel.startCall(
+                                                chatViewModel.myUserId,
+                                                user,
+                                                false,
+                                                navController
+                                            )
+                                            navController.navigate(
+                                                "calling/$callId/${chatViewModel.myUserId}/$user/false"
+                                            )
+                                            true
+                                        } else {
+                                            voiceFeedback.speak(
+                                                "Hey $myName. Wrong command. Please say: video call followed by username."
+                                            )
+                                            true
                                         }
                                     }
+
+                                    // ANY OTHER INVALID COMMAND
+                                    else -> {
+                                        voiceFeedback.speak(
+                                            "Hey $myName. Wrong command. You can say: open chat followed by username, audio call followed by username, or video call followed by username."
+                                        )
+                                        true
+                                    }
                                 }
+
                                 showListening = false
                             }
                         )
                     }
-
 
                     DisposableEffect(Unit) {
                         voiceHelper.startListening()
@@ -149,6 +213,8 @@ fun UserListScreen(
                         liveText = liveText.value
                     )
                 }
+
+
             }
         }
     ) { paddingValues ->
@@ -163,14 +229,19 @@ fun UserListScreen(
             OutlinedTextField(
                 value = inputName,
                 onValueChange = { inputName = it },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSaved
+
             )
 
             Spacer(Modifier.height(8.dp))
             if (myUsername.isEmpty()) {
                 Button(onClick = {
                     val nameTrimmed = inputName.trim()
-                    if (nameTrimmed.isNotBlank()) viewModel.announceSelf(nameTrimmed)
+                    if (nameTrimmed.isNotBlank()) {
+                        viewModel.announceSelf(nameTrimmed)
+                        isSaved = true
+                    }
                 }) { Text("Save & Announce") }
 
                 Spacer(Modifier.height(16.dp))

@@ -54,7 +54,7 @@ fun VideoCallScreen(
                 if (snapshot?.getString("status") == "ended") {
                     AgoraManager.leaveChannel()
                     navController.navigate("users") {
-                        popUpTo("users") { inclusive = true }
+                        popUpTo("users") { inclusive = false }
                     }
                 }
             }

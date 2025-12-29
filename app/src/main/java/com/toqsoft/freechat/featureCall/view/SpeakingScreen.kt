@@ -146,6 +146,7 @@ fun SpeakingScreen(
                     endCall(callId, callerId, receiverId)
                     AgoraManager.leaveChannel()
                     onHangUp()
+
                 },
                 modifier = Modifier
                     .size(64.dp)

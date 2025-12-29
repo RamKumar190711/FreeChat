@@ -31,7 +31,10 @@ import androidx.navigation.NavController
 import com.toqsoft.freechat.R
 import com.toqsoft.freechat.coreModel.ChatMessage
 import com.toqsoft.freechat.coreModel.MessageStatus
+import com.toqsoft.freechat.coreNetwork.VoiceFeedback
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
+import com.toqsoft.freechat.featureVoiceListening.VoiceRecognitionHelper
+import com.toqsoft.freechat.featureVoiceListening.view.VoiceListeningDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,15 +51,19 @@ fun ChatScreen(
     val userStatus by viewModel.combinedUserStatus.collectAsState()
     val context = LocalContext.current
 
+    // 🎤 Voice states
+    var showVoiceListening by remember { mutableStateOf(false) }
+    val liveVoiceText = remember { mutableStateOf("") }
+
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
+    ) { granted ->
+        if (granted) {
             val callId = viewModel.startCall(viewModel.myUserId, otherUserId, true, navController)
             navController.navigate("calling/$callId/${viewModel.myUserId}/$otherUserId/true")
-        } else {
-            Toast.makeText(context, "Microphone permission required", Toast.LENGTH_SHORT).show()
+            showVoiceListening = true
         }
+        else Toast.makeText(context, "Microphone permission required", Toast.LENGTH_SHORT).show()
     }
 
     val videoPermissionLauncher = rememberLauncherForActivityResult(
@@ -79,12 +86,12 @@ fun ChatScreen(
             Toast.makeText(context, "Camera & microphone required", Toast.LENGTH_SHORT).show()
         }
     }
-
     LaunchedEffect(otherUserId) {
         viewModel.observeChatWithUser(otherUserId)
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.White)) {
+
         TopAppBar(
             title = {
                 Column {
@@ -140,45 +147,165 @@ fun ChatScreen(
             }
         )
 
-        LazyColumn(state = listState, modifier = Modifier.weight(1f), reverseLayout = true) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            reverseLayout = true
+        ) {
             items(messages.reversed()) { msg ->
                 MessageBubble(msg, msg.senderId == viewModel.myUserId)
             }
         }
 
+        // ⌨️ INPUT ROW
         Row(
-            modifier = Modifier.padding(8.dp).imePadding().navigationBarsPadding(),
+            modifier = Modifier
+                .padding(8.dp)
+                .imePadding()
+                .navigationBarsPadding(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                modifier = Modifier.weight(1f).height(56.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
                 placeholder = { Text("Type a message") },
                 singleLine = true
             )
-            Spacer(Modifier.width(8.dp))
-            Button(
-                onClick = {
-                    if (input.isNotBlank()) {
-                        viewModel.sendMessage(input.trim(), otherUserId)
-                        input = ""
-                    }
-                },
-                shape = CircleShape,
+
+            Spacer(Modifier.width(6.dp))
+
+            Box(
                 modifier = Modifier.size(46.dp),
-                contentPadding = PaddingValues(0.dp)
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Send,
-                    contentDescription = "Send"
-                )
+                if (input.isBlank()) {
+                    // 🎤 MIC
+                    IconButton(
+                        onClick = {
+                            if (ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                showVoiceListening = true
+                            } else {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.primary,
+                                CircleShape
+                            )
+
+                    ) {
+
+                        Icon(
+                            painter = painterResource(id = R.drawable.mic),
+                            contentDescription = "Voice",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+
+                        )
+
+                    }
+                } else {
+                    // 📤 SEND
+                    IconButton(
+                        onClick = {
+                            viewModel.sendMessage(input.trim(), otherUserId)
+                            input = ""
+                        },
+                        modifier = Modifier
+                            .background(
+                                MaterialTheme.colorScheme.primary,
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = Color.White,
+                        )
+                    }
+                }
             }
         }
     }
-}
+        val voiceFeedback = remember {
+            VoiceFeedback(context)
+        }
 
+        DisposableEffect(Unit) {
+            onDispose {
+                voiceFeedback.release()
+            }
+        }
+
+
+    // 🎙️ VOICE LISTENING OVERLAY
+    if (showVoiceListening) {
+
+        val voiceHelper = remember {
+            VoiceRecognitionHelper(
+                context = context,
+                onPartialResult = { liveVoiceText.value = it },
+                onFinalResult = { finalText ->
+                    val spoken = finalText.lowercase().trim()
+                    val currentUserName = viewModel.myUserId // or myUsername
+
+                    when {
+                        // ✅ CORRECT COMMAND
+                        spoken.startsWith("send message") -> {
+                            val msg = spoken.removePrefix("send message").trim()
+
+                            if (msg.isNotEmpty()) {
+                                // Just send, NO voice feedback
+                                viewModel.sendMessage(msg, otherUserId)
+                            } else {
+                                // ❌ Missing message text
+                                voiceFeedback.speak(
+                                    "Hey  $currentUserName. Wrong command, Please say, send message, followed by your text."
+                                )
+                            }
+                        }
+
+                        // ❌ WRONG COMMAND
+                        else -> {
+                            voiceFeedback.speak(
+                                "Hey Wrong command, $currentUserName. Please say, send message, followed by your text."
+                            )
+                        }
+                    }
+
+                    showVoiceListening = false
+                }
+
+            )
+        }
+
+        DisposableEffect(Unit) {
+            voiceHelper.startListening()
+            onDispose {
+                voiceHelper.stopListening()
+                voiceHelper.destroy()
+            }
+        }
+
+        VoiceListeningDialog(
+            onDismiss = {
+                showVoiceListening = false
+                voiceHelper.stopListening()
+            },
+            liveText = liveVoiceText.value
+        )
+    }
+}
 @Composable
 fun MessageBubble(message: ChatMessage, isMe: Boolean) {
     val isCallLog = message.status in listOf(
