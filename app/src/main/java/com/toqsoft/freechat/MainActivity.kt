@@ -18,8 +18,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
@@ -63,6 +67,15 @@ class MainActivity : ComponentActivity() {
 
         handleIntent(intent)
         turnScreenOnAndKeyguard()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val window = (this as ComponentActivity).window
+        val insetsController = WindowInsetsControllerCompat(window, window.decorView)
+
+        // Set status bar background to white
+        window.statusBarColor = Color.White.toArgb()
+        // Make status bar icons dark (for white background)
+        insetsController.isAppearanceLightStatusBars = true
+
 
         // Request permissions if not granted
         val neededPermissions = mutableListOf<String>()
