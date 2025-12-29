@@ -1,23 +1,26 @@
 package com.toqsoft.freechat.featureCall.view
 
 import android.content.Context
-import android.util.Log
-import androidx.compose.animation.*
+import android.media.MediaPlayer
+import android.media.RingtoneManager
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -42,24 +45,61 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val myId = viewModel.myUserId.ifEmpty { FirebaseAuth.getInstance().currentUser?.uid.orEmpty() }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var vibrator by remember { mutableStateOf<Vibrator?>(null) }
+
+    LaunchedEffect(incomingCall) {
+        if (incomingCall != null) {
+            if (mediaPlayer == null) {
+                val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                mediaPlayer = MediaPlayer.create(context, uri)?.apply {
+                    isLooping = true
+                    start()
+                }
+            }
+            if (vibrator == null) {
+                vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                vibrator?.let {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            it.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 500, 500), 0))
+                        } else {
+                            it.vibrate(longArrayOf(0, 500, 500), 0)
+                        }
+                    } catch (_: SecurityException) {}
+                }
+            }
+        } else {
+            mediaPlayer?.let { player ->
+                try { if (player.isPlaying) player.stop() } catch (_: IllegalStateException) {}
+                player.release()
+            }
+            mediaPlayer = null
+            vibrator?.cancel()
+            vibrator = null
+        }
+    }
 
     LaunchedEffect(incomingCall, myId) {
         val call = incomingCall ?: return@LaunchedEffect
         if (myId.isEmpty()) return@LaunchedEffect
-
         val chatId = listOf(myId, call.callerId).sorted().joinToString("_")
         val docRef = FirebaseFirestore.getInstance()
             .collection("chats").document(chatId)
             .collection("messages").document(call.callId)
-
         docRef.update("delivered", true)
-
-        val listener = docRef.addSnapshotListener { snapshot, _ ->
+        docRef.addSnapshotListener { snapshot, _ ->
             val status = snapshot?.getString("status")
-
             if (listOf("declined", "missed", "ended").contains(status)) {
+                mediaPlayer?.let { player ->
+                    try { if (player.isPlaying) player.stop() } catch (_: IllegalStateException) {}
+                    player.release()
+                }
+                mediaPlayer = null
+                vibrator?.cancel()
+                vibrator = null
                 NotificationManagerCompat.from(context).cancel(999)
-                IncomingCallManager.clearCall() // This removes Sam's overlay
+                IncomingCallManager.clearCall()
             }
         }
     }
@@ -67,7 +107,6 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
     incomingCall?.let { call ->
         val swipeOffsetX = remember { Animatable(0f) }
         val swipeProgress = (swipeOffsetX.value / 200f).coerceIn(-1f, 1f)
-
         val infiniteTransition = rememberInfiniteTransition(label = "pulse")
         val pulseScale by infiniteTransition.animateFloat(
             initialValue = 1f,
@@ -77,7 +116,6 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
                 repeatMode = RepeatMode.Reverse
             ), label = "scale"
         )
-
         val backgroundColor by animateColorAsState(
             targetValue = when {
                 swipeProgress > 0.4f -> Color(0xFF1B5E20)
@@ -87,7 +125,6 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
         )
 
         Box(modifier = Modifier.fillMaxSize().background(backgroundColor)) {
-
             Box(modifier = Modifier.align(Alignment.Center), contentAlignment = Alignment.Center) {
                 Box(
                     modifier = Modifier
@@ -95,7 +132,6 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
                         .scale(pulseScale + abs(swipeProgress) * 0.2f)
                         .background(Color.White.copy(alpha = 0.05f), CircleShape)
                 )
-
                 Box(
                     modifier = Modifier
                         .size(120.dp)
@@ -111,7 +147,6 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
                 }
             }
 
-            // 2. TOP: Name and Status
             Column(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -124,19 +159,23 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "FREECHAT AUDIO CALL",
+                    text = if (call.audioOnly) "FREECHAT AUDIO CALL" else "FREECHAT VIDEO CALL",
                     color = Color.White.copy(alpha = 0.6f),
                     fontSize = 13.sp,
                     letterSpacing = 2.sp
                 )
             }
 
-            // 3. BOTTOM: Swipe Action
-            Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp).fillMaxWidth()) {
-
-                // Indicator Labels
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 100.dp, start = 24.dp, end = 24.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(42.dp))
+                    .background(Color.LightGray.copy(alpha = 0.2f))
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 60.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 60.dp, vertical = 50.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -144,7 +183,6 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
                     Text("Answer", color = Color.White.copy(alpha = (0.6f + swipeProgress).coerceIn(0.1f, 1f)))
                 }
 
-                // Drag Handle
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -161,8 +199,8 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
                                 onDragEnd = {
                                     scope.launch {
                                         when {
-                                            swipeOffsetX.value > 130f -> acceptCall(call, navController, myId, context)
-                                            swipeOffsetX.value < -130f -> rejectCall(call, myId, context)
+                                            swipeOffsetX.value > 130f -> acceptCall(call, navController, myId, context, mediaPlayer, vibrator)
+                                            swipeOffsetX.value < -130f -> rejectCall(call, myId, context, mediaPlayer, vibrator)
                                             else -> swipeOffsetX.animateTo(0f, spring(Spring.DampingRatioMediumBouncy))
                                         }
                                     }
@@ -190,7 +228,13 @@ fun IncomingCallOverlay(navController: NavController, viewModel: ChatViewModel =
     }
 }
 
-private fun acceptCall(call: IncomingCallData, navController: NavController, myId: String, context: Context) {
+private fun acceptCall(call: IncomingCallData, navController: NavController, myId: String, context: Context, mediaPlayer: MediaPlayer?, vibrator: Vibrator?) {
+    mediaPlayer?.let { player ->
+        try { if (player.isPlaying) player.stop() } catch (_: IllegalStateException) {}
+        player.release()
+    }
+    vibrator?.cancel()
+
     val chatId = listOf(myId, call.callerId).sorted().joinToString("_")
     FirebaseFirestore.getInstance()
         .collection("chats").document(chatId)
@@ -205,20 +249,21 @@ private fun acceptCall(call: IncomingCallData, navController: NavController, myI
                 channelName = call.channel,
                 userId = myId
             )
-
             if (call.audioOnly) {
                 navController.navigate("speak/${call.callId}/${call.callerId}/$myId/true/${call.callerId}")
             } else {
-                navController.navigate(
-                    "videoCall/${call.callId}/${call.callerId}/$myId"
-                )
-
+                navController.navigate("videoCall/${call.callId}/${call.callerId}/$myId")
             }
         }
 }
 
+private fun rejectCall(call: IncomingCallData, myId: String, context: Context, mediaPlayer: MediaPlayer?, vibrator: Vibrator?) {
+    mediaPlayer?.let { player ->
+        try { if (player.isPlaying) player.stop() } catch (_: IllegalStateException) {}
+        player.release()
+    }
+    vibrator?.cancel()
 
-private fun rejectCall(call: IncomingCallData, myId: String, context: android.content.Context) {
     val chatId = listOf(myId, call.callerId).sorted().joinToString("_")
     FirebaseFirestore.getInstance().collection("chats").document(chatId)
         .collection("messages").document(call.callId)

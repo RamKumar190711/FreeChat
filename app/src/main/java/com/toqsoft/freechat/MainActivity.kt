@@ -135,7 +135,8 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
 
     NavHost(navController = navController, startDestination = "users") {
         composable("users") {
-            UserListScreen(onOpenChat = { id -> navController.navigate("chat/$id") })
+            UserListScreen(onOpenChat = { id -> navController.navigate("chat/$id") },
+                navController = navController)
         }
 
         composable(

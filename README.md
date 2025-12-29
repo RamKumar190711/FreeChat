@@ -1,99 +1,92 @@
 # 🚀 FreeChat
 
+**FreeChat** is a modern, modular **chat + calling application** built with  
+**Jetpack Compose**, following **SOLID principles** and **MVVM architecture**.
 
-**FreeChat** is a modern, modular chat application built with **Jetpack Compose**, 
-following **SOLID principles** and **MVVM architecture**.
-It supports **real-time messaging** using **MQTT**,
-persistent storage with **Firestore**, 
-**push notifications via FCM**. Each user is uniquely identified with a UUID generated from their username.
+It supports:
+- 💬 Real-time messaging (MQTT)
+- 📞 Audio & Video calls (Agora)
+- 🕘 Call history
+- 🟢 Online / Offline presence
+- ☁️ Firestore persistence
+- 🔔 Push notifications via FCM
+
+Each user is uniquely identified using a **UUID generated from their username**.
 
 ---
 
 ## 📱 Features
 
-- Real-time chat using MQTT
+### 💬 Messaging
+- Real-time messaging using **MQTT**
 - Typing indicators ✍️
-- Message status ticks:
-  - **Sent (✓)**
-  - **Delivered (✓✓)**
-  - **Seen (✓✓ Blue)**
-- Presence management (online/offline & last seen ⏱)
-- Notifications via FCM 🔔
-- User-based UUIDs for unique identification
-- Modular, SOLID, and testable architecture
-- Jetpack Compose UI for reactive and modern design
-- Offline support with Firestore persistence
+- Message status:
+  - Sent ✓
+  - Delivered ✓✓
+  - Seen ✓✓ (Blue)
+- Offline support via Firestore cache
+
+---
+
+### 📞 Audio & Video Calls
+- One-to-one **Audio calls**
+- One-to-one **Video calls**
+- Incoming call screen (Accept / Reject)
+- Call state synced using **Firestore**
+- Mic mute / unmute 🎙
+- Camera on / off 📷
+- Switch camera 🔄
+- End call sync for both users
+- Automatic pop-back when the other user ends the call
+
+---
+
+### 🕘 Call History
+- Incoming / Outgoing calls
+- Missed / Rejected / Completed calls
+- Audio / Video type
+- Call duration
+- Timestamp
+- Stored per chat in Firestore
+
+---
+
+### 🟢 Online / Offline Presence
+- Real-time online status
+- Last seen timestamp
+- Updates on:
+  - App foreground / background
+  - App termination
+  - Network disconnect
+- Visible in:
+  - Chat list
+  - Chat header
+  - Call screens
+
+---
+
+### 🔔 Notifications (FCM)
+- New message alerts
+- Incoming call notifications
+- Missed call notifications
+- Works in background & killed state
 
 ---
 
 ## 🏗 Architecture
 
-The app follows a **modular architecture** and **SOLID principles**:
-
-1. **Core Modules**
-   - `coreModel`: Data models (`ChatMessage`, `StatusEvent`, `TypingEvent`, `UserPresence`)
-   - `coreNetwork`: MQTT manager for real-time messaging
-   - `coreData`: Firestore repositories
-   - `coreUtils`: Utilities (UUID generation, time formatting)
-
-2. **Feature Modules**
-   - `featureChat`: Chat screens, ViewModels, and UI components
-   - `featureAuth` (optional): User login/registration
-
-3. **App Layer**
-   - Hilt for dependency injection
-   - Navigation using Jetpack Compose Navigation
-   - MainActivity hosts Composable screens
+FreeChat follows **Clean Modular Architecture + MVVM**.
 
 ---
 
-## 💬 MQTT Messaging
+## 📦 Modules
 
-- **Messages**:
-- **Typing indicators**:
-- **Message status** (SENT / DELIVERED / SEEN):
--  **Presence status**:  
+### 🔹 Core Modules
 
----
-
-## ☁️ Firestore Integration
-
-- Stores chat messages for persistence
-- Supports offline caching
-- Each user document is identified by a **UUID derived from username**
-
----
-
-## 🔔 FCM Notifications
-
-- Push notifications for new messages
-- Integrated with Firestore triggers
-- Works even when the app is in the background
-
----
-
-## 🎨 UI / Jetpack Compose
-
-- Composable screens for chat list and chat detail
-- Message bubbles with status icons
-- Typing indicators and last seen timestamps
-- Fully reactive using **StateFlow**
-- Smooth scrolling and reverse layout for chat messages
-
----
-
-## 🆔 User Identification
-
-- On login, the app generates a **UUID for each username**
-- This UUID is used for MQTT topics, Firestore documents, and push notifications
-
----
-
-## ⚡ Getting Started
-
-1. Clone the repository:
- ```bash
- git clone https://github.com/yourusername/freechat.git
-
-
-
+#### `coreModel`
+```kotlin
+ChatMessage
+CallModel
+CallHistory
+IncomingCallData
+UserPresence

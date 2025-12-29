@@ -10,9 +10,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -163,8 +166,15 @@ fun ChatScreen(
                         input = ""
                     }
                 },
-                shape = RoundedCornerShape(16.dp)
-            ) { Text("Send") }
+                shape = CircleShape,
+                modifier = Modifier.size(46.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Send,
+                    contentDescription = "Send"
+                )
+            }
         }
     }
 }
