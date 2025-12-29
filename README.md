@@ -40,6 +40,19 @@ Each user is uniquely identified using a **UUID generated from their username**.
 - Automatic pop-back when the other user ends the call
 
 ---
+### 🎙 Voice-to-Action (Speech Recognition)
+- FreeChat uses Android SpeechRecognizer to allow hands-free navigation and actions.
+
+- Commands Supported:
+
+- "Open chat [Name]" – Navigates directly to a specific conversation.
+
+- "Audio call [Name]" – Initiates a 1:1 Agora audio call.
+
+- "Video call [Name]" – Initiates a 1:1 Agora video call.
+
+- Implementation: Integrated via a side-effect in Compose to trigger ViewModel intents based on recognized text.
+---
 
 ### 🕘 Call History
 - Incoming / Outgoing calls
