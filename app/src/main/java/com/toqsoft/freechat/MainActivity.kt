@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +40,7 @@ import com.toqsoft.freechat.featureCall.view.*
 import com.toqsoft.freechat.featureChat.ui.ChatScreen
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import com.toqsoft.freechat.featureList.view.UserListScreen
+import com.toqsoft.freechat.featureList.viewModel.UserListViewModel
 import com.toqsoft.freechat.featureVideo.view.VideoCallScreen
 import com.toqsoft.freechat.ui.theme.FreeChatTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -166,6 +168,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavHost(navController: androidx.navigation.NavHostController) {
     val chatViewModel: ChatViewModel = hiltViewModel()
+    val userListViewModel: UserListViewModel = hiltViewModel()
+
 
     NavHost(navController = navController, startDestination = "users") {
         composable("users") {
@@ -184,6 +188,28 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                 navController = navController
             )
         }
+
+        composable(
+            route = "userListFromCall/{callId}/{callerId}/{receiverId}",
+            arguments = listOf(
+                navArgument("callId") { type = NavType.StringType },
+                navArgument("callerId") { type = NavType.StringType },
+                navArgument("receiverId") { type = NavType.StringType }
+            )
+        ) { entry ->
+
+            UserListScreen(
+                navController = navController,
+                isGroupSelect = true,
+                callId = entry.arguments?.getString("callId"),
+                callerId = entry.arguments?.getString("callerId").orEmpty(),
+                receiverId = entry.arguments?.getString("receiverId").orEmpty(),
+                onOpenChat = {}
+            )
+        }
+
+
+
 
         composable(
             route = "calling/{callId}/{callerId}/{receiverId}/{audioOnly}",
@@ -240,6 +266,9 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
             )
         ) { entry ->
             val args = entry.arguments
+            val users by userListViewModel.users.collectAsState()
+            val myUsername by userListViewModel.myUsername.collectAsState()
+
             SpeakingScreen(
                 callId = args?.getString("callId").orEmpty(),
                 callerId = args?.getString("callerId").orEmpty(),
@@ -251,9 +280,21 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                         popUpTo("users") { inclusive = false }
                         launchSingleTop = true
                     }
-                }
-
+                },
+                onAddUser = {
+                    navController.navigate(
+                        "userListFromCall/" +
+                                "${args?.getString("callId")}/" +
+                                "${args?.getString("callerId")}/" +
+                                "${args?.getString("receiverId")}"
+                    )
+                },
+                navController = navController,
+                users = users,             // ✅ pass users
+                myUsername = myUsername    // ✅ pass my username
             )
+
+
         }
     }
 }

@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.app.FreeChatApplication
 import com.toqsoft.freechat.coreModel.*
@@ -134,6 +135,23 @@ class ChatViewModel @Inject constructor(
     }
 
     private fun getChatId(a: String, b: String) = listOf(a, b).sorted().joinToString("_")
+
+    fun addUsersToCall(
+        chatId: String,
+        callId: String,
+        users: List<String>
+    ) {
+        FirebaseFirestore.getInstance()
+            .collection("chats")
+            .document(chatId)
+            .collection("messages")
+            .document(callId)
+            .update(
+                "participants",
+                FieldValue.arrayUnion(*users.toTypedArray())
+            )
+    }
+
 
 
 

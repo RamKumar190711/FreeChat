@@ -38,20 +38,26 @@ import com.toqsoft.freechat.featureVoiceListening.view.VoiceListeningDialog
 import okhttp3.*
 
 
+
 @Composable
 fun UserListScreen(
     onOpenChat: (otherUserId: String) -> Unit,
-    viewModel: UserListViewModel = hiltViewModel(),
     navController: NavController,
-    chatViewModel: ChatViewModel = hiltViewModel()
-
-    ) {
+    viewModel: UserListViewModel = hiltViewModel(),
+    chatViewModel: ChatViewModel = hiltViewModel(),
+    isGroupSelect: Boolean = false,   // ✅ NEW
+    callId: String? = null,
+    // ✅ ADD THESE (safe defaults)
+    callerId: String = "",
+    receiverId: String = ""
+) {
     val context = LocalContext.current
     val users by viewModel.users.collectAsState()
     val myUsername by viewModel.myUsername.collectAsState()
     val unreadCounts by viewModel.unreadCounts.collectAsState()
     val lastMessages by viewModel.lastMessages.collectAsState()
     val liveText = remember { mutableStateOf("") }
+
     var inputName by remember { mutableStateOf(myUsername) }
     LaunchedEffect(myUsername) { inputName = myUsername }
 
@@ -61,32 +67,30 @@ fun UserListScreen(
 
     var isSaved by remember { mutableStateOf(false) }
 
-    // Request microphone permission
+    // ✅ NEW — selected users for group call
+    val selectedUsers = remember { mutableStateListOf<String>() }
+
+    // ------------------ EXISTING PERMISSION & VOICE CODE (UNCHANGED) ------------------
+
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            showListening = true
-        } else {
-            Log.d("Voice", "Mic permission denied")
-        }
+        if (granted) showListening = true
     }
-    val voiceFeedback = remember {
-        VoiceFeedback(context)
-    }
+
+    val voiceFeedback = remember { VoiceFeedback(context) }
 
     DisposableEffect(Unit) {
-        onDispose {
-            voiceFeedback.release()
-        }
+        onDispose { voiceFeedback.release() }
     }
 
-
+    // ------------------ UI ------------------
 
     Scaffold(
         floatingActionButton = {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Add User FAB
+
+                // FAB (unchanged)
                 FloatingActionButton(
                     onClick = { showAddUserDialog = true },
                     modifier = Modifier
@@ -96,7 +100,7 @@ fun UserListScreen(
                     Icon(imageVector = Icons.Default.Add, contentDescription = "Add User")
                 }
 
-                // AI Voice Assistant Button above FAB
+                // AI button (unchanged)
                 AIAssistantButton(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -106,9 +110,7 @@ fun UserListScreen(
                         when {
                             ContextCompat.checkSelfPermission(
                                 context, Manifest.permission.RECORD_AUDIO
-                            ) == PackageManager.PERMISSION_GRANTED -> {
-                                showListening = true
-                            }
+                            ) == PackageManager.PERMISSION_GRANTED -> showListening = true
                             else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
@@ -213,17 +215,53 @@ fun UserListScreen(
                         liveText = liveText.value
                     )
                 }
+            }
+        },
 
+        // ✅ NEW — bottom button ONLY for group select
+        bottomBar = {
+            if (isGroupSelect && selectedUsers.isNotEmpty()) {
+                Button(
+                    onClick = {
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set(
+                                "addedUsers",
+                                ArrayList(selectedUsers) // 🔥 FIX
+                            )
+                        val chatId = listOf(callerId, receiverId)
+                            .sorted()
+                            .joinToString("_")
 
+                        callId?.let {
+                            chatViewModel.addUsersToCall(
+                                chatId = chatId,
+                                callId = callId,
+                                users = selectedUsers
+                            )
+                        }
+
+                        navController.popBackStack()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Text("Add ${selectedUsers.size} users to call")
+                }
             }
         }
     ) { paddingValues ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
                 .windowInsetsPadding(WindowInsets.statusBars)
         ) {
+
+            // ------------------ EXISTING HEADER UI (UNCHANGED) ------------------
+
             Text("Your name:")
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
@@ -231,10 +269,10 @@ fun UserListScreen(
                 onValueChange = { inputName = it },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !isSaved
-
             )
 
             Spacer(Modifier.height(8.dp))
+
             if (myUsername.isEmpty()) {
                 Button(onClick = {
                     val nameTrimmed = inputName.trim()
@@ -246,36 +284,104 @@ fun UserListScreen(
 
                 Spacer(Modifier.height(16.dp))
             }
+            SelectedUsersRow(selectedUsers = selectedUsers)
+
 
             Text("Users:")
             Spacer(Modifier.height(8.dp))
+
+            // ------------------ USER LIST (MINIMAL CHANGE HERE) ------------------
+
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(users.filter { it != myUsername }) { user ->
+
                     val unread = unreadCounts[user] ?: 0
                     val lastMsg = lastMessages[user] ?: ""
+                    val isSelected = selectedUsers.contains(user)
 
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                onOpenChat(user)
-                                viewModel.clearUnreadCount(user)
+                                if (isGroupSelect) {
+                                    if (isSelected) selectedUsers.remove(user)
+                                    else selectedUsers.add(user)
+                                } else {
+                                    onOpenChat(user)
+                                    viewModel.clearUnreadCount(user)
+                                }
                             },
                         shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected)
+                                Color(0xFFE3F2FD)
+                            else
+                                MaterialTheme.colorScheme.surface
+                        )
+                    )
+                    {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        )
+                        {
+
+                            // ✅ Checkbox (group select only)
+                            if (isGroupSelect) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = {
+                                        if (it) selectedUsers.add(user)
+                                        else selectedUsers.remove(user)
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+
+                            // ✅ Profile color based on username (light colors)
+                            val profileBgColor = remember(user) {
+                                val colors = listOf(
+                                    Color(0xFFFFCDD2),
+                                    Color(0xFFC8E6C9),
+                                    Color(0xFFBBDEFB),
+                                    Color(0xFFFFF9C4),
+                                    Color(0xFFD1C4E9),
+                                    Color(0xFFFFE0B2)
+                                )
+                                colors[kotlin.math.abs(user.hashCode()) % colors.size]
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(
+                                        color = profileBgColor,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = user.first().uppercaseChar().toString(),
+                                    color = Color(0xFF212121), // dark text
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(user, style = MaterialTheme.typography.bodyLarge)
-                                if (lastMsg.isNotEmpty()) {
+                                Text(
+                                    text = user,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+
+                                if (!isGroupSelect && lastMsg.isNotEmpty()) {
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         lastMsg,
@@ -286,12 +392,13 @@ fun UserListScreen(
                                 }
                             }
 
-                            if (unread > 0) {
+                            // ✅ Unread badge (unchanged)
+                            if (!isGroupSelect && unread > 0) {
                                 Box(
                                     modifier = Modifier
                                         .background(
                                             Color(0xFF0D88FF),
-                                            shape = RoundedCornerShape(20.dp)
+                                            RoundedCornerShape(20.dp)
                                         )
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
@@ -303,13 +410,23 @@ fun UserListScreen(
                                 }
                             }
                         }
+
+                        Divider(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 72.dp), // aligns after avatar
+                            thickness = 0.5.dp,
+                            color = Color(0xFFE0E0E0)
+                        )
+
                     }
                 }
             }
         }
     }
 
-    // Add User Dialog
+    // ------------------ EXISTING ADD USER DIALOG (UNCHANGED) ------------------
+
     if (showAddUserDialog) {
         AlertDialog(
             onDismissRequest = { showAddUserDialog = false },
@@ -339,6 +456,49 @@ fun UserListScreen(
                 }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+fun SelectedUsersRow(selectedUsers: List<String>) {
+    if (selectedUsers.isEmpty()) return
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        selectedUsers.forEach { user ->
+            // Light colored circle with first letter
+            val profileBgColor = remember(user) {
+                val colors = listOf(
+                    Color(0xFFFFCDD2),
+                    Color(0xFFC8E6C9),
+                    Color(0xFFBBDEFB),
+                    Color(0xFFFFF9C4),
+                    Color(0xFFD1C4E9),
+                    Color(0xFFFFE0B2)
+                )
+                colors[kotlin.math.abs(user.hashCode()) % colors.size]
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(profileBgColor, shape = CircleShape)
+                    .padding(4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = user.first().uppercaseChar().toString(),
+                    color = Color(0xFF212121),
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+        }
     }
 }
 
