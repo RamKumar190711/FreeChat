@@ -1,11 +1,16 @@
 package com.toqsoft.freechat.featureCall.view
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,9 +54,11 @@ fun SpeakingScreen(
 
     val addedUsers = remember { mutableStateListOf<String>() }
     val selectedUsers = remember { mutableStateListOf<String>() }
+    val participants = remember { mutableStateListOf<String>() }
 
-    val connectedUsers = addedUsers.filter { it != otherUserId }
-    val notConnectedUsers = users.filter { it !in addedUsers && it != myUsername }
+    val connectedUsers = participants.filter { it != otherUserId && it != myUsername }
+    val notConnectedUsers = users.filter { it !in participants && it != myUsername }
+
     LaunchedEffect(callActive) {
         while (callActive) {
             delay(1000)
@@ -61,25 +68,23 @@ fun SpeakingScreen(
 
     DisposableEffect(callId) {
         val chatId = listOf(callerId, receiverId).sorted().joinToString("_")
-
         val listener = FirebaseFirestore.getInstance()
             .collection("chats")
             .document(chatId)
             .collection("messages")
             .document(callId)
             .addSnapshotListener { snapshot, _ ->
+                val firestoreParticipants = snapshot?.get("participants") as? List<String> ?: emptyList()
 
-                val participants =
-                    snapshot?.get("participants") as? List<String> ?: emptyList()
-
-                addedUsers.clear()
-                addedUsers.addAll(participants.filter {
-                    it != callerId && it != receiverId
-                })
+                // Always rebuild participants including yourself and other user
+                participants.clear()
+                participants.add(myUsername) // your device
+                participants.add(otherUserId) // the person you are talking to
+                participants.addAll(firestoreParticipants.filter { it != myUsername && it != otherUserId }.distinct())
             }
-
         onDispose { listener.remove() }
     }
+
 
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -91,16 +96,35 @@ fun SpeakingScreen(
                 ?.get<List<String>>("addedUsers")
 
         if (!newUsers.isNullOrEmpty()) {
-            addedUsers.clear()
-            addedUsers.addAll(newUsers)
+            val chatId = listOf(callerId, receiverId)
+                .sorted()
+                .joinToString("_")
 
-            // important: clear after reading
-            navBackStackEntry
-                ?.savedStateHandle
-                ?.remove<List<String>>("addedUsers")
+            FirebaseFirestore.getInstance()
+                .collection("chats")
+                .document(chatId)
+                .collection("messages")
+                .document(callId)
+                .update(
+                    "participants",
+                    com.google.firebase.firestore.FieldValue.arrayUnion(*newUsers.toTypedArray())
+                )
+
+            addedUsers.addAll(newUsers.distinct())
+            navBackStackEntry?.savedStateHandle?.remove<List<String>>("addedUsers")
         }
+
+
+
+
     }
 
+//    LaunchedEffect(addedUsers) {
+//        participants.clear()
+//        participants.add(myUsername)    // ✅ ADD YOURSELF FIRST
+//        participants.add(otherUserId)
+//        participants.addAll(addedUsers)
+//    }
 
     val minutes = seconds / 60
     val remainingSeconds = seconds % 60
@@ -126,7 +150,7 @@ fun SpeakingScreen(
         ) {
             Icon(
                 painter = painterResource(
-                    id = if (addedUsers.size > 0)
+                    id = if (participants.size > 2)
                         R.drawable.group_user   // 👈 your drawable
                     else
                         R.drawable.user_add     // 👈 your drawable
@@ -138,20 +162,92 @@ fun SpeakingScreen(
 
         }
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 60.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(text = otherUserId, color = Color.White, fontSize = 26.sp)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = String.format("%02d:%02d", minutes, remainingSeconds),
-                color = Color.Gray,
-                fontSize = 18.sp
-            )
+        /* ---------------- GROUP CALL (3+) ---------------- */
+        if (participants.size > 2) {
+
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 60.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "$otherUserId & ${participants.size - 1} others",
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = String.format("%02d:%02d", minutes, remainingSeconds),
+                    color = Color.Gray,
+                    fontSize = 14.sp
+                )
+            }
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 120.dp, bottom = 140.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(participants) { user ->
+                    ParticipantTile(
+                        username = user,
+                        isMe = user == myUsername
+                    )
+                }
+            }
+
         }
+        else {
+
+            // 🔹 TOP NAME + TIMER (UNCHANGED)
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 60.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = otherUserId,
+                    color = Color.White,
+                    fontSize = 26.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = String.format("%02d:%02d", minutes, remainingSeconds),
+                    color = Color.Gray,
+                    fontSize = 18.sp
+                )
+            }
+
+            // 🔥 CENTER AVATAR ONLY
+            Box(
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(userColor(otherUserId)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = otherUserId.first().uppercaseChar().toString(),
+                        color = Color.White,
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+
+
 
         Row(
             modifier = Modifier
@@ -333,4 +429,74 @@ private fun endCall(callId: String, callerId: String, receiverId: String) {
         .collection("messages")
         .document(callId)
         .update("status", "ended")
+}
+
+@Composable
+fun ParticipantTile(
+    username: String,
+    isMe: Boolean
+) {
+    val color = userColor(username)
+
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF1E1E1E))
+            .border(2.dp, color, RoundedCornerShape(20.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(color),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = username.first().uppercaseChar().toString(),
+                    color = Color.White,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = if (isMe) "You" else username,
+                color = if (isMe) Color.White else color,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+
+fun userColor(username: String): Color {
+    val colors = listOf(
+        Color(0xFFEF5350), // Red
+        Color(0xFFAB47BC), // Purple
+        Color(0xFF5C6BC0), // Indigo
+        Color(0xFF29B6F6), // Blue
+        Color(0xFF26A69A), // Teal
+        Color(0xFF66BB6A), // Green
+        Color(0xFFFFCA28), // Amber
+        Color(0xFFFF7043)  // Orange
+    )
+    return colors[kotlin.math.abs(username.hashCode()) % colors.size]
+}
+fun updateParticipants(
+    participants: MutableList<String>,
+    myUsername: String,
+    otherUserId: String,
+    addedUsers: List<String>
+) {
+    participants.clear()
+    participants.add(myUsername)   // yourself
+    participants.add(otherUserId)  // the other person
+    participants.addAll(addedUsers.distinct()) // added users, no duplicates
 }
