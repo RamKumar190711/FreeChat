@@ -28,16 +28,43 @@ Each user is uniquely identified using a **UUID generated from their username**.
 
 ---
 
-### 📞 Audio & Video Calls
-- One-to-one **Audio calls**
-- One-to-one **Video calls**
-- Incoming call screen (Accept / Reject)
-- Call state synced using **Firestore**
-- Mic mute / unmute 🎙
-- Camera on / off 📷
-- Switch camera 🔄
-- End call sync for both users
-- Automatic pop-back when the other user ends the call
+📞 Audio & Video Calls (Updated)
+
+One-to-one Audio calls
+
+One-to-one Video calls
+
+Group calls (10+ participants)
+
+Audio calls with multiple users
+
+Dynamic participant grid UI
+
+Add/remove participants during the call
+
+Mic mute/unmute per participant
+
+Speaker toggle
+
+End call for all participants
+
+Call duration timer
+
+Firestore sync for participants and call state
+
+Handles real-time UI updates when users join/leave
+
+Incoming call screen (Accept / Reject)
+
+Call state synced using Firestore
+
+Mic mute / unmute 🎙
+
+Camera on / off 📷
+
+Switch camera 🔄
+
+End call sync for both users
 
 ---
 ### 🎙 Voice-to-Action (Speech Recognition)
