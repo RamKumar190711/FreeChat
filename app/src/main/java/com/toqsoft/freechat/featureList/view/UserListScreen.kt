@@ -218,7 +218,7 @@ fun UserListScreen(
             }
         },
 
-        // ✅ NEW — bottom button ONLY for group select
+        // Update the bottomBar section in UserListScreen
         bottomBar = {
             if (isGroupSelect && selectedUsers.isNotEmpty()) {
                 Button(
@@ -227,7 +227,7 @@ fun UserListScreen(
                             ?.savedStateHandle
                             ?.set(
                                 "addedUsers",
-                                ArrayList(selectedUsers) // 🔥 FIX
+                                ArrayList(selectedUsers)
                             )
                         val chatId = listOf(callerId, receiverId)
                             .sorted()
@@ -237,7 +237,9 @@ fun UserListScreen(
                             chatViewModel.addUsersToCall(
                                 chatId = chatId,
                                 callId = callId,
-                                users = selectedUsers
+                                users = selectedUsers,
+                                callerId = callerId,
+                                inviterId = myUsername // This is the key fix!
                             )
                         }
 
@@ -251,6 +253,7 @@ fun UserListScreen(
                 }
             }
         }
+
     ) { paddingValues ->
 
         Column(

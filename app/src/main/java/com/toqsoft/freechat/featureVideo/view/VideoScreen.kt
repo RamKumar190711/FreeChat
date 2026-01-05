@@ -28,6 +28,17 @@ import com.toqsoft.freechat.R
 import com.toqsoft.freechat.coreNetwork.AgoraManager
 import kotlinx.coroutines.delay
 
+/**
+ * A Composable function that displays the user interface for an ongoing video call.
+ *
+ * This screen manages the local and remote video feeds, call controls (mute, switch camera, end call),
+ * and listens for the call status from Firebase to automatically end the call if the other user hangs up.
+ *
+ * @param navController The NavController used for navigating away from the screen after the call ends.
+ * @param callId The unique identifier for the current call document in Firebase.
+ * @param callerId The unique identifier of the user who initiated the call.
+ * @param receiverId The unique identifier of the user who is receiving the call.
+ */
 @Composable
 fun VideoCallScreen(
     navController: NavController,

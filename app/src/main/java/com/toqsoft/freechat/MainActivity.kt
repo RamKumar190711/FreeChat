@@ -27,6 +27,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -34,6 +35,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentChange
+import com.google.firebase.firestore.FirebaseFirestore
 import com.toqsoft.freechat.app.MyFirebaseMessagingService
 import com.toqsoft.freechat.coreNetwork.*
 import com.toqsoft.freechat.featureCall.view.*
@@ -170,7 +173,12 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
     val chatViewModel: ChatViewModel = hiltViewModel()
     val userListViewModel: UserListViewModel = hiltViewModel()
 
-
+    val myUsername by userListViewModel.myUsername.collectAsState(initial = "")
+    LaunchedEffect(myUsername) {
+        if (myUsername.isNotEmpty()) {
+            listenForCallInvitations(myUsername, navController)
+        }
+    }
     NavHost(navController = navController, startDestination = "users") {
         composable("users") {
             UserListScreen(onOpenChat = { id -> navController.navigate("chat/$id") },
@@ -209,6 +217,45 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
         }
 
 
+        composable(
+            route = "groupCall/{callId}/{callerId}/{receiverId}/{audioOnly}/{otherUserId}",
+            arguments = listOf(
+                navArgument("callId") { type = NavType.StringType },
+                navArgument("callerId") { type = NavType.StringType },
+                navArgument("receiverId") { type = NavType.StringType },
+                navArgument("audioOnly") { type = NavType.BoolType },
+                navArgument("otherUserId") { type = NavType.StringType }
+            )
+        ) { entry ->
+            val args = entry.arguments
+            val users by userListViewModel.users.collectAsState()
+            val myUsername by userListViewModel.myUsername.collectAsState()
+
+            SpeakingScreen(
+                callId = args?.getString("callId").orEmpty(),
+                callerId = args?.getString("callerId").orEmpty(),
+                receiverId = args?.getString("receiverId").orEmpty(),
+                otherUserId = args?.getString("otherUserId").orEmpty(),
+                audioOnly = args?.getBoolean("audioOnly") ?: true,
+                onHangUp = {
+                    navController.navigate("users") {
+                        popUpTo("users") { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                onAddUser = {
+                    navController.navigate(
+                        "userListFromCall/" +
+                                "${args?.getString("callId")}/" +
+                                "${args?.getString("callerId")}/" +
+                                "${args?.getString("receiverId")}"
+                    )
+                },
+                navController = navController,
+                users = users,
+                myUsername = myUsername
+            )
+        }
 
 
         composable(
@@ -252,6 +299,21 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
         }
 
 
+
+        composable("callInvitation/{callId}/{callerId}/{chatId}/{myUsername}") { backStackEntry ->
+            val callId = backStackEntry.arguments?.getString("callId") ?: ""
+            val callerId = backStackEntry.arguments?.getString("callerId") ?: ""
+            val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
+            val myUsername = backStackEntry.arguments?.getString("myUsername") ?: ""
+
+            CallInvitationScreen(
+                navController = navController,
+                callId = callId,
+                callerId = callerId,
+                chatId = chatId,
+                myUsername = myUsername
+            )
+        }
 
 
 
@@ -297,4 +359,24 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
 
         }
     }
+}
+fun listenForCallInvitations(myUsername: String, navController: NavController) {
+    FirebaseFirestore.getInstance()
+        .collection("notifications")
+        .document(myUsername)
+        .collection("call_invitations")
+        .addSnapshotListener { snapshot, error ->
+            snapshot?.documentChanges?.forEach { change ->
+                if (change.type == DocumentChange.Type.ADDED) {
+                    val callId = change.document.getString("callId") ?: ""
+                    val callerId = change.document.getString("callerId") ?: ""
+                    val chatId = change.document.getString("chatId") ?: ""
+
+                    // Navigate to invitation screen
+                    navController.navigate(
+                        "callInvitation/$callId/$callerId/$chatId/$myUsername"
+                    )
+                }
+            }
+        }
 }

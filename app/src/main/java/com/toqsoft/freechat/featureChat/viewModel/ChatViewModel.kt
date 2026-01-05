@@ -12,6 +12,7 @@ import com.toqsoft.freechat.coreNetwork.AgoraManager
 import com.toqsoft.freechat.coreNetwork.FirestoreChatRepository
 import com.toqsoft.freechat.coreNetwork.IncomingCallManager
 import com.toqsoft.freechat.coreNetwork.MqttClientManager
+import com.toqsoft.freechat.featureCall.view.sendCallInvitations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -95,7 +96,6 @@ class ChatViewModel @Inject constructor(
             }
         }
     }
-
     fun startCall(
         myUserId: String,
         otherUserId: String,
@@ -106,14 +106,16 @@ class ChatViewModel @Inject constructor(
         val channel = "call_${UUID.randomUUID()}"
         val chatId = listOf(myUserId, otherUserId).sorted().joinToString("_")
 
-        val callData = mapOf(
+        val callData = hashMapOf(
             "type" to "call",
             "status" to "ringing",
             "callerId" to myUserId,
             "receiverId" to otherUserId,
             "channel" to channel,
             "audioOnly" to audioOnly,
-            "timestamp" to System.currentTimeMillis()
+            "timestamp" to System.currentTimeMillis(),
+            "invitations" to emptyList<String>(),
+            "participants" to listOf(myUserId, otherUserId) // BOTH USERS ARE INITIAL PARTICIPANTS
         )
 
         FirebaseFirestore.getInstance()
@@ -133,46 +135,21 @@ class ChatViewModel @Inject constructor(
 
         return callId
     }
-
-    private fun getChatId(a: String, b: String) = listOf(a, b).sorted().joinToString("_")
-
+    // Update addUsersToCall function
     fun addUsersToCall(
         chatId: String,
         callId: String,
-        users: List<String>
+        users: List<String>,
+        callerId: String,
+        inviterId: String
     ) {
-        FirebaseFirestore.getInstance()
-            .collection("chats")
-            .document(chatId)
-            .collection("messages")
-            .document(callId)
-            .update(
-                "participants",
-                FieldValue.arrayUnion(*users.toTypedArray())
-            )
-    }
-
-
-
-
-
-    private fun observeCallStatus(
-        chatId: String,
-        callId: String,
-        onAccepted: () -> Unit,
-        onRejected: () -> Unit
-    ) {
-        FirebaseFirestore.getInstance()
-            .collection("chats")
-            .document(chatId)
-            .collection("messages")
-            .document(callId)
-            .addSnapshotListener { snap, _ ->
-                when (snap?.getString("status")) {
-                    "accepted" -> onAccepted()
-                    "rejected", "ended" -> onRejected()
-                }
-            }
+        sendCallInvitations(
+            chatId = chatId,
+            callId = callId,
+            callerId = callerId,
+            invitedUsers = users,
+            inviterId = inviterId
+        )
     }
 
 
