@@ -13,6 +13,12 @@ object AgoraManager {
     var localUid: Int = 0
         private set
 
+    private var onAudioVolumeCallback: ((speakers: Array<IRtcEngineEventHandler.AudioVolumeInfo>?, totalVolume: Int) -> Unit)? = null
+
+    fun setOnAudioVolumeCallback(callback: (speakers: Array<IRtcEngineEventHandler.AudioVolumeInfo>?, totalVolume: Int) -> Unit) {
+        onAudioVolumeCallback = callback
+    }
+
     private val rtcEventHandler = object : IRtcEngineEventHandler() {
 
         override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
@@ -31,6 +37,16 @@ object AgoraManager {
 
         override fun onError(err: Int) {
             Log.e("AGORA_DEBUG", "🔥 Agora error=$err")
+        }
+
+        override fun onAudioVolumeIndication(speakers: Array<AudioVolumeInfo>?, totalVolume: Int) {
+            super.onAudioVolumeIndication(speakers, totalVolume)
+
+            speakers?.forEach { speakerInfo ->
+                Log.d("AGORA_VOLUME", "UID ${speakerInfo.uid}: volume=${speakerInfo.volume}")
+            }
+
+            onAudioVolumeCallback?.invoke(speakers, totalVolume)
         }
     }
 
@@ -71,7 +87,9 @@ object AgoraManager {
         localUid = (userId.hashCode() and 0x7FFFFFFF)
         Log.d("AGORA_DEBUG", "Local UID set to $localUid")
 
-        // ENABLE LOCAL VIDEO AND START PREVIEW
+        rtcEngine?.enableAudioVolumeIndication(200, 3, true)
+        Log.d("AGORA_DEBUG", "Enabled audio volume indication")
+
         rtcEngine?.enableVideo()
         rtcEngine?.startPreview()
 
