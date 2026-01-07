@@ -1,6 +1,7 @@
 package com.toqsoft.freechat.coreModel
 
 import java.util.UUID
+import kotlin.String
 
 enum class MessageStatus {
     SENT,
@@ -22,6 +23,35 @@ data class ChatMessage(
     val timestamp: Long = System.currentTimeMillis(),
     val status: MessageStatus = MessageStatus.SENT
 )
+
+data class Group(
+    val id: String = "",
+    val name: String = "",
+    val members: List<String> = emptyList(),
+    val createdBy: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastMessage: String = "",
+    val lastMessageTime: Long = 0L,
+    val avatarUrl: String = "",
+    val isActive: Boolean = true
+)
+
+data class GroupMessage(
+    val id: String = "",
+    val groupId: String = "",
+    val senderId: String = "",
+    val senderName: String = "",
+    val content: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val type: String = "text", // text, image, audio, video, file
+    val fileUrl: String = "",
+    val fileSize: Long = 0L,
+    val duration: Long = 0L, // for audio/video
+    val isRead: Boolean = false,
+    val readBy: List<String> = emptyList(),
+    val reactions: Map<String, String> = emptyMap() // userId -> emoji
+)
+
 data class TypingEvent(
     val senderId: String,
     val receiverId: String,

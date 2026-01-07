@@ -94,4 +94,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics-ktx") // optional
     implementation("io.agora.rtc:full-sdk:4.2.6")
 
+    implementation("io.coil-kt:coil-compose:2.6.0")
+
+
 }

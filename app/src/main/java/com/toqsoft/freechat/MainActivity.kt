@@ -41,6 +41,7 @@ import com.toqsoft.freechat.app.MyFirebaseMessagingService
 import com.toqsoft.freechat.coreNetwork.*
 import com.toqsoft.freechat.featureCall.view.*
 import com.toqsoft.freechat.featureChat.ui.ChatScreen
+import com.toqsoft.freechat.featureChat.view.GroupChatScreen
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import com.toqsoft.freechat.featureList.view.UserListScreen
 import com.toqsoft.freechat.featureList.viewModel.UserListViewModel
@@ -182,6 +183,7 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
     NavHost(navController = navController, startDestination = "users") {
         composable("users") {
             UserListScreen(onOpenChat = { id -> navController.navigate("chat/$id") },
+                onOpenGroupChat = { id -> navController.navigate("groupChat/$id")},
                 navController = navController)
         }
 
@@ -212,7 +214,8 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                 callId = entry.arguments?.getString("callId"),
                 callerId = entry.arguments?.getString("callerId").orEmpty(),
                 receiverId = entry.arguments?.getString("receiverId").orEmpty(),
-                onOpenChat = {}
+                onOpenChat = {},
+                onOpenGroupChat = {}
             )
         }
 
@@ -298,6 +301,17 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
             )
         }
 
+        // Add this to your navigation graph:
+        composable(
+            route = "groupChat/{groupId}",
+            arguments = listOf(navArgument("groupId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getString("groupId") ?: ""
+            GroupChatScreen(
+                groupId = groupId,
+                onBack = { navController.popBackStack() }
+            )
+        }
 
 
         composable("callInvitation/{callId}/{callerId}/{chatId}/{myUsername}") { backStackEntry ->

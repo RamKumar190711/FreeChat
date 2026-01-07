@@ -1,7 +1,9 @@
+// UserListViewModel.kt
 package com.toqsoft.freechat.featureList.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.toqsoft.freechat.coreModel.Group
 import com.toqsoft.freechat.coreModel.UserPreferencesRepository
 import com.toqsoft.freechat.coreNetwork.FirestoreChatRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +26,12 @@ class UserListViewModel @Inject constructor(
     private val _lastMessages = MutableStateFlow<Map<String, String>>(emptyMap())
     val lastMessages: StateFlow<Map<String, String>> = _lastMessages.asStateFlow()
 
+    private val _groups = MutableStateFlow<List<Group>>(emptyList())
+    val groups: StateFlow<List<Group>> = _groups.asStateFlow()
+
+    private val _groupCreationResult = MutableSharedFlow<String>()
+    val groupCreationResult: SharedFlow<String> = _groupCreationResult.asSharedFlow()
+
     val myUsername: StateFlow<String> = prefs.usernameFlow.map { it ?: "" }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
@@ -35,6 +43,15 @@ class UserListViewModel @Inject constructor(
         viewModelScope.launch {
             firestoreRepo.getUsersFlow().collect { list ->
                 _users.value = list
+            }
+        }
+
+        // Load groups for current user
+        viewModelScope.launch {
+            myUsername.filter { it.isNotEmpty() }.collect { myId ->
+                firestoreRepo.getGroupsFlow(myId).collect { groupList ->
+                    _groups.value = groupList
+                }
             }
         }
 
@@ -70,11 +87,35 @@ class UserListViewModel @Inject constructor(
         }
     }
 
+    fun createGroupChat(
+        groupName: String,
+        members: List<String>,
+        createdBy: String
+    ) {
+        viewModelScope.launch {
+            try {
+                val group = Group(
+                    name = groupName,
+                    members = members,
+                    createdBy = createdBy,
+                    createdAt = System.currentTimeMillis()
+                )
+
+                val groupId = firestoreRepo.createGroup(group)
+                _groupCreationResult.emit("Group '$groupName' created successfully!")
+
+                // Navigate to the group chat (you'll handle this in the UI)
+                // The group ID can be used to navigate to the group chat screen
+            } catch (e: Exception) {
+                _groupCreationResult.emit("Failed to create group: ${e.message}")
+            }
+        }
+    }
+
     fun clearUnreadCount(user: String) {
         viewModelScope.launch {
             val myId = myUsername.value
-            firestoreRepo.markChatAsRead(myId, user) // Firestore updated here
-            // No local zeroing, Flow will update automatically
+            firestoreRepo.markChatAsRead(myId, user)
         }
     }
 }
