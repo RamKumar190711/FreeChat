@@ -1,4 +1,3 @@
-// UserListViewModel.kt
 package com.toqsoft.freechat.featureList.viewModel
 
 import androidx.lifecycle.ViewModel
@@ -31,6 +30,12 @@ class UserListViewModel @Inject constructor(
 
     private val _groupCreationResult = MutableSharedFlow<String>()
     val groupCreationResult: SharedFlow<String> = _groupCreationResult.asSharedFlow()
+
+    private val _usernameUpdateResult = MutableSharedFlow<String>()
+    val usernameUpdateResult: SharedFlow<String> = _usernameUpdateResult.asSharedFlow()
+
+    private val _isUpdatingUsername = MutableStateFlow(false)
+    val isUpdatingUsername: StateFlow<Boolean> = _isUpdatingUsername.asStateFlow()
 
     val myUsername: StateFlow<String> = prefs.usernameFlow.map { it ?: "" }.stateIn(
         viewModelScope,
@@ -115,7 +120,75 @@ class UserListViewModel @Inject constructor(
     fun clearUnreadCount(user: String) {
         viewModelScope.launch {
             val myId = myUsername.value
-            firestoreRepo.markChatAsRead(myId, user)
+            if (myId.isNotEmpty()) {
+                firestoreRepo.markChatAsRead(myId, user)
+            }
+        }
+    }
+
+    /**
+     * Update the username both locally and in Firestore
+     * @param newName The new username to set
+     */
+    fun updateUsername(newName: String) {
+        viewModelScope.launch {
+            _isUpdatingUsername.value = true
+            try {
+                val oldName = myUsername.value
+
+                if (oldName.isEmpty()) {
+                    // If no previous username, just announce as new user
+                    prefs.saveUsername(newName)
+                    firestoreRepo.saveUser(newName, newName)
+                    _usernameUpdateResult.emit("Username set to: $newName")
+                } else {
+                    // Update username in preferences
+                    prefs.saveUsername(newName)
+
+                    // Update username in Firestore (this should handle updating user document)
+                    firestoreRepo.saveUser(newName, newName)
+
+                    // If we need to update chat references, we might need additional logic here
+                    // For now, we'll just update the user document
+
+                    _usernameUpdateResult.emit("Username updated from '$oldName' to '$newName'")
+                }
+            } catch (e: Exception) {
+                _usernameUpdateResult.emit("Failed to update username: ${e.message}")
+            } finally {
+                _isUpdatingUsername.value = false
+            }
+        }
+    }
+
+
+
+    /**
+     * Validate if a username is available
+     * @param username The username to check
+     * @return Boolean indicating if username is available
+     */
+    fun isUsernameAvailable(username: String): Boolean {
+        return !users.value.contains(username) || username == myUsername.value
+    }
+
+    /**
+     * Validate username rules
+     * @param username The username to validate
+     * @return Pair of isValid and error message
+     */
+    fun validateUsername(username: String): Pair<Boolean, String> {
+        return when {
+            username.isEmpty() -> Pair(false, "Username cannot be empty")
+            username.length < 3 -> Pair(false, "Username must be at least 3 characters")
+            username.length > 20 -> Pair(false, "Username must be less than 20 characters")
+            username.contains(Regex("[^a-zA-Z0-9_]")) ->
+                Pair(false, "Username can only contain letters, numbers, and underscores")
+            username == myUsername.value ->
+                Pair(true, "This is your current username")
+            users.value.contains(username) ->
+                Pair(false, "Username '$username' is already taken")
+            else -> Pair(true, "Username is available")
         }
     }
 }

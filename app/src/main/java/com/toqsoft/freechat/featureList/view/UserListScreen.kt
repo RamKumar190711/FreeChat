@@ -2,37 +2,27 @@ package com.toqsoft.freechat.featureList.view
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.MediaRecorder
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -41,21 +31,15 @@ import androidx.navigation.NavController
 import com.toqsoft.freechat.R
 import com.toqsoft.freechat.coreModel.Group
 import com.toqsoft.freechat.coreNetwork.VoiceFeedback
-import com.toqsoft.freechat.featureChat.view.gradientBlueEnd
-import com.toqsoft.freechat.featureChat.view.gradientBlueStart
-import com.toqsoft.freechat.featureChat.view.lightBlue
-import com.toqsoft.freechat.featureChat.view.lighterBlue
 import com.toqsoft.freechat.featureChat.view.primaryBlue
 import com.toqsoft.freechat.featureChat.viewModel.ChatViewModel
 import com.toqsoft.freechat.featureList.viewModel.UserListViewModel
 import com.toqsoft.freechat.featureVoiceListening.VoiceRecognitionHelper
 import com.toqsoft.freechat.featureVoiceListening.view.VoiceListeningDialog
 import kotlinx.coroutines.launch
-import okhttp3.*
 
 
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun UserListScreen(
     onOpenChat: (otherUserId: String) -> Unit,
@@ -76,36 +60,51 @@ fun UserListScreen(
     val lastMessages by viewModel.lastMessages.collectAsState()
     val liveText = remember { mutableStateOf("") }
     val groupCreationResult by viewModel.groupCreationResult.collectAsState(initial = "")
+    var newUserName by remember { mutableStateOf("") }
+    var originalUsername by remember { mutableStateOf("") }
 
-    var inputName by remember { mutableStateOf(myUsername) }
-    LaunchedEffect(myUsername) { inputName = myUsername }
+    // Search state
+    var showSearchBar by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredUsers = remember(users, searchQuery) {
+        users.filter {
+            it != myUsername &&
+                    (searchQuery.isEmpty() || it.contains(searchQuery, ignoreCase = true))
+        }
+    }
+    val filteredGroups = remember(groups, searchQuery) {
+        groups.filter {
+            searchQuery.isEmpty() ||
+                    it.name.contains(searchQuery, ignoreCase = true) ||
+                    it.members.any { member -> member.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    // Profile editing states
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var profileName by remember { mutableStateOf("") }
+    var profileStatus by remember { mutableStateOf("") }
+
+    LaunchedEffect(myUsername) {
+        profileName = myUsername
+        originalUsername = myUsername
+    }
+
 
     var showAddUserDialog by remember { mutableStateOf(false) }
     var showListening by remember { mutableStateOf(false) }
-    var isSaved by remember { mutableStateOf(false) }
 
-    // Group chat creation states
+    // Group creation states
     var isCreatingGroup by remember { mutableStateOf(false) }
     var selectedUsersForGroup by remember { mutableStateOf<List<String>>(emptyList()) }
     var showGroupNameDialog by remember { mutableStateOf(false) }
     var groupName by remember { mutableStateOf("") }
 
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
-
-    // Existing selected users for group call
+    // Selected users for group call
     val selectedUsers = remember { mutableStateListOf<String>() }
 
-    // Show snackbar when group is created
-    LaunchedEffect(groupCreationResult) {
-        if (groupCreationResult.isNotEmpty()) {
-            scope.launch {
-                snackbarHostState.showSnackbar(groupCreationResult)
-            }
-        }
-    }
-
-    // ------------------ EXISTING PERMISSION & VOICE CODE ------------------
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -119,332 +118,224 @@ fun UserListScreen(
         onDispose { voiceFeedback.release() }
     }
 
-    // ------------------ UI ------------------
+    // Show snackbar when group is created
+    LaunchedEffect(groupCreationResult) {
+        if (groupCreationResult.isNotEmpty()) {
+            scope.launch {
+                snackbarHostState.showSnackbar(groupCreationResult)
+            }
+        }
+    }
 
     Scaffold(
-        floatingActionButton = {
-            Box(modifier = Modifier.fillMaxSize()) {
-                // First FAB: Group creation
-                if (!isCreatingGroup) {
-                    FloatingActionButton(
-                        onClick = {
-                            isCreatingGroup = true
-                            selectedUsersForGroup = emptyList()
-                        },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = 184.dp, end = 16.dp), // Position for top FAB
-                        containerColor = Color.Transparent,
-                        shape = CircleShape
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp) // Same size for all FABs
-                                .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(gradientBlueStart, gradientBlueEnd)
-                                    ),
-                                    shape = CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.group_user),
-                                contentDescription = "Group",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Second FAB: AI Assistant
-                AIAssistantButton(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 100.dp, end = 16.dp), // Position for middle FAB
-                    onClick = {
-                        when {
-                            ContextCompat.checkSelfPermission(
-                                context, Manifest.permission.RECORD_AUDIO
-                            ) == PackageManager.PERMISSION_GRANTED -> showListening = true
-                            else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    },
-                    size = 56.dp // Same size
-                )
-
-                // Third FAB: Add User
-                FloatingActionButton(
-                    onClick = { showAddUserDialog = true },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(bottom = 16.dp, end = 16.dp), // Position for bottom FAB
-                    containerColor = Color.Transparent,
-                    shape = CircleShape
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp) // Same size for all FABs
-                            .background(
-                                brush = Brush.linearGradient(
-                                    colors = listOf(gradientBlueStart, gradientBlueEnd)
-                                ),
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Add User",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        },
-
-        // Top App Bar for group creation mode
         topBar = {
-            if (isCreatingGroup) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(primaryBlue)
+            ) {
+                // Main Top Bar (always visible)
                 TopAppBar(
                     title = {
-                        Text(
-                            text = "Create Group Chat",
-                            color = Color.White
-                        )
+                        if (showSearchBar) {
+                            // In search mode, show back button instead of title
+                            Box(modifier = Modifier.fillMaxWidth())
+                        } else {
+                            Text(
+                                "FreeChat",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 20.sp
+                            )
+                        }
                     },
                     navigationIcon = {
-                        IconButton(onClick = {
-                            isCreatingGroup = false
-                            selectedUsersForGroup = emptyList()
-                        }) {
-                            Icon(
-                                Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
+                        if (showSearchBar) {
+                            IconButton(
+                                onClick = {
+                                    showSearchBar = false
+                                    searchQuery = ""
+                                },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                        } else {
+                            IconButton(
+                                onClick = { showProfileDialog = true },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(Icons.Default.Person, contentDescription = "Profile", tint = Color.White)
+                            }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = gradientBlueEnd
+                        containerColor = Color.Transparent
                     ),
                     actions = {
-                        if (selectedUsersForGroup.isNotEmpty()) {
-                            TextButton(
-                                onClick = { showGroupNameDialog = true }
+                        if (showSearchBar) {
+                            // Empty actions during search
+                        } else {
+                            IconButton(
+                                onClick = { showSearchBar = true },
+                                modifier = Modifier.size(40.dp)
                             ) {
-                                Text(
-                                    "Create (${selectedUsersForGroup.size})",
-                                    color = Color.White
-                                )
+                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                            }
+                            IconButton(
+                                onClick = { /* Handle more options */ },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
                             }
                         }
                     }
                 )
-            }
-        },
 
-        bottomBar = {
-            if (isGroupSelect && selectedUsers.isNotEmpty()) {
-                Button(
-                    onClick = {
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set(
-                                "addedUsers",
-                                ArrayList(selectedUsers)
-                            )
-                        val chatId = listOf(callerId, receiverId)
-                            .sorted()
-                            .joinToString("_")
-
-                        callId?.let {
-                            chatViewModel.addUsersToCall(
-                                chatId = chatId,
-                                callId = callId,
-                                users = selectedUsers,
-                                callerId = callerId,
-                                inviterId = myUsername
-                            )
-                        }
-
-                        navController.popBackStack()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
-                    Text("Add ${selectedUsers.size} users to call")
-                }
-            }
-        }
-    ) { paddingValues ->
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .windowInsetsPadding(WindowInsets.statusBars)
-        ) {
-
-            if (!isCreatingGroup) {
-                // ------------------ EXISTING USER LIST UI ------------------
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    Text("Your name:")
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = inputName,
-                        onValueChange = { inputName = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isSaved
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    if (myUsername.isEmpty()) {
-                        Button(onClick = {
-                            val nameTrimmed = inputName.trim()
-                            if (nameTrimmed.isNotBlank()) {
-                                viewModel.announceSelf(nameTrimmed)
-                                isSaved = true
-                            }
-                        }) { Text("Save & Announce") }
-
-                        Spacer(Modifier.height(16.dp))
-                    }
-
-                    // Groups Section
-                    if (groups.isNotEmpty()) {
-                        Text(
-                            text = "Your Groups",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.heightIn(max = 200.dp)
+                // Search Bar (only visible when showSearchBar is true)
+                if (showSearchBar) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color.White
+                        ),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 1.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            items(groups) { group ->
-                                GroupItem(
-                                    group = group,
-                                    onClick = { onOpenGroupChat(group.id) }
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = Color.Gray,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            TextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Search contacts...") },
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    disabledContainerColor = Color.Transparent,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent
                                 )
-                            }
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-                    }
-
-                    SelectedUsersRow(selectedUsers = selectedUsers)
-
-                    Text("Users:")
-                    Spacer(Modifier.height(8.dp))
-
-                    UserListContent(
-                        users = users.filter { it != myUsername },
-                        myUsername = myUsername,
-                        unreadCounts = unreadCounts,
-                        lastMessages = lastMessages,
-                        isGroupSelect = isGroupSelect,
-                        selectedUsers = selectedUsers,
-                        onUserClick = { user ->
-                            if (isGroupSelect) {
-                                if (selectedUsers.contains(user)) selectedUsers.remove(user)
-                                else selectedUsers.add(user)
-                            } else {
-                                onOpenChat(user)
-                                viewModel.clearUnreadCount(user)
-                            }
-                        }
-                    )
-                }
-            } else {
-                // ------------------ GROUP CREATION MODE UI ------------------
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    // Selected users preview
-                    if (selectedUsersForGroup.isNotEmpty()) {
-                        Text(
-                            text = "Selected users:",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color.Gray
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        ) {
-                            items(selectedUsersForGroup) { user ->
-                                Card(
-                                    modifier = Modifier.width(100.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xFFE8F5E8)
-                                    )
+                            )
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    modifier = Modifier.size(20.dp)
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(8.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
-                                    ) {
-                                        // Profile circle
-                                        val profileBgColor = remember(user) {
-                                            val colors = listOf(
-                                                Color(0xFFFFCDD2),
-                                                Color(0xFFC8E6C9),
-                                                Color(0xFFBBDEFB)
-                                            )
-                                            colors[kotlin.math.abs(user.hashCode()) % colors.size]
-                                        }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .background(profileBgColor, shape = CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = user.first().uppercaseChar().toString(),
-                                                color = Color(0xFF212121),
-                                                style = MaterialTheme.typography.titleMedium
-                                            )
-                                        }
-
-                                        Spacer(Modifier.height(4.dp))
-
-                                        Text(
-                                            text = user,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 1,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                             }
                         }
                     }
+                }
+            }
+        },
+        bottomBar = {
+            if (isGroupSelect && selectedUsers.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    color = primaryBlue
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${selectedUsers.size} selected",
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium
+                        )
 
-                    Text(
-                        text = "Select users for group:",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                navController.previousBackStackEntry
+                                    ?.savedStateHandle
+                                    ?.set(
+                                        "addedUsers",
+                                        ArrayList(selectedUsers)
+                                    )
+                                val chatId = listOf(callerId, receiverId)
+                                    .sorted()
+                                    .joinToString("_")
 
-                    UserListContent(
+                                callId?.let {
+                                    chatViewModel.addUsersToCall(
+                                        chatId = chatId,
+                                        callId = callId,
+                                        users = selectedUsers,
+                                        callerId = callerId,
+                                        inviterId = myUsername
+                                    )
+                                }
+
+                                navController.popBackStack()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White,
+                                contentColor = primaryBlue
+                            ),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Text("Add to Call", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        },
+        floatingActionButton = {
+            if (!isCreatingGroup && !isGroupSelect && !showSearchBar) {
+                FloatingActionButton(
+                    onClick = { showAddUserDialog = true },
+                    containerColor = primaryBlue,
+                    contentColor = Color.White,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .padding(bottom = 16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "New Chat")
+                }
+            }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White)
+            ) {
+                if (isCreatingGroup) {
+                    // Group Creation Mode
+                    GroupCreationContent(
                         users = users.filter { it != myUsername },
                         myUsername = myUsername,
-                        unreadCounts = emptyMap(),
-                        lastMessages = emptyMap(),
-                        isGroupSelect = true,
                         selectedUsers = selectedUsersForGroup,
                         onUserClick = { user ->
                             if (selectedUsersForGroup.contains(user)) {
@@ -452,127 +343,379 @@ fun UserListScreen(
                             } else {
                                 selectedUsersForGroup = selectedUsersForGroup + user
                             }
-                        }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
+                } else {
+                    // Regular User List Mode
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        // Profile Section - Only show when not in group select
+                        if (!isGroupSelect && !showSearchBar) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color.White
+                                ),
+                                elevation = CardDefaults.cardElevation(2.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                        .clickable { showProfileDialog = true },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFE8E8E8))
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Person,
+                                            contentDescription = "Profile",
+                                            tint = Color.Gray,
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .align(Alignment.Center)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(16.dp))
+
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = myUsername.ifEmpty { "Set your name" },
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 16.sp,
+                                            color = Color.Black
+                                        )
+                                        Text(
+                                            text = "Tap to view and edit profile",
+                                            fontSize = 14.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Edit",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quick Actions - Only show when not in search mode
+                        if (!isGroupSelect && !showSearchBar) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                QuickActionButton(
+                                    icon = R.drawable.group_user,
+                                    label = "New Group",
+                                    onClick = {
+                                        isCreatingGroup = true
+                                        selectedUsersForGroup = emptyList()
+                                    }
+                                )
+                                QuickActionButton(
+                                    icon = null,
+                                    iconVector = Icons.Default.Person,
+                                    label = "New Contact",
+                                    onClick = { showAddUserDialog = true }
+                                )
+                                QuickActionButton(
+                                    icon = R.drawable.voice_ai,
+                                    label = "Voice AI",
+                                    onClick = {
+                                        when {
+                                            ContextCompat.checkSelfPermission(
+                                                context, Manifest.permission.RECORD_AUDIO
+                                            ) == PackageManager.PERMISSION_GRANTED -> showListening = true
+                                            else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        // User List Content
+                        UserListContent(
+                            users = if (showSearchBar) filteredUsers else users.filter { it != myUsername },
+                            groups = if (showSearchBar) filteredGroups else groups,
+                            myUsername = myUsername,
+                            unreadCounts = unreadCounts,
+                            lastMessages = lastMessages,
+                            isGroupSelect = isGroupSelect,
+                            selectedUsers = selectedUsers,
+                            onUserClick = { user ->
+                                if (isGroupSelect) {
+                                    if (selectedUsers.contains(user)) selectedUsers.remove(user)
+                                    else selectedUsers.add(user)
+                                } else {
+                                    onOpenChat(user)
+                                    viewModel.clearUnreadCount(user)
+                                }
+                            },
+                            onGroupClick = onOpenGroupChat,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }
     }
 
-    // ------------------ EXISTING ADD USER DIALOG ------------------
+    // Profile Dialog
+    if (showProfileDialog) {
+        AlertDialog(
+            onDismissRequest = { showProfileDialog = false },
+            title = {
+                Text(
+                    "Edit Profile",
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
+            text = {
+                Column {
+                    // Profile Picture
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE8E8E8))
+                            .align(Alignment.CenterHorizontally)
+                            .clickable {
+                                // TODO: Add image picker
+                            }
+                    ) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = "Profile",
+                            tint = Color.Gray,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .align(Alignment.Center)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(primaryBlue)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Change photo",
+                                tint = Color.White,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .align(Alignment.Center)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(24.dp))
+
+                    OutlinedTextField(
+                        value = profileName,
+                        onValueChange = { profileName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Your Name") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBlue,
+                            focusedLabelColor = primaryBlue
+                        )
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = profileStatus,
+                        onValueChange = { profileStatus = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Status") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBlue,
+                            focusedLabelColor = primaryBlue
+                        ),
+                        placeholder = { Text("Hey there! I'm using FreeChat") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = profileName.trim()
+                        if (trimmed.isNotBlank() && trimmed != myUsername) {
+                            viewModel.updateUsername(trimmed)
+                        }
+                        showProfileDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryBlue),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Save Changes")
+                }
+
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        profileName = originalUsername   // ✅ restore previous name
+                        showProfileDialog = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel")
+                }
+
+            },
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+// Add User Dialog
     if (showAddUserDialog) {
         AlertDialog(
             onDismissRequest = { showAddUserDialog = false },
-            title = { Text("Add User") },
+            title = { Text("Add New Contact", fontWeight = FontWeight.SemiBold) },
             text = {
                 Column {
-                    var newUserName by remember { mutableStateOf("") }
-
                     OutlinedTextField(
                         value = newUserName,
                         onValueChange = { newUserName = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Username") }
+                        label = { Text("Username") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBlue,
+                            focusedLabelColor = primaryBlue
+                        )
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Enter the username of another user on the same network",
+                        "Enter the username to add as contact",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    // This needs to be extracted from the dialog
-                    // For now, we'll handle it differently
-                    showAddUserDialog = false
-                }) { Text("Add") }
+                Button(
+                    onClick = {
+                        val nameTrimmed = newUserName.trim()
+                        if (nameTrimmed.isNotBlank()) {
+                            viewModel.addDiscoveredUser(nameTrimmed)
+                            newUserName = ""        // ✅ clear after add
+                            showAddUserDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryBlue)
+                ) {
+                    Text("Add Contact")
+                }
             },
             dismissButton = {
                 TextButton(onClick = {
+                    newUserName = ""
                     showAddUserDialog = false
-                }) { Text("Cancel") }
+                }) {
+                    Text("Cancel")
+                }
             }
         )
     }
 
-    // NEW: Group Name Dialog
+
+    // Group Name Dialog
     if (showGroupNameDialog) {
         AlertDialog(
             onDismissRequest = { showGroupNameDialog = false },
-            title = { Text("Create Group Chat") },
+            title = {
+                Text(
+                    "New Group",
+                    fontWeight = FontWeight.SemiBold
+                )
+            },
             text = {
                 Column {
                     OutlinedTextField(
                         value = groupName,
                         onValueChange = { groupName = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Group Name") },
-                        placeholder = { Text("Enter group name") }
+                        label = { Text("Group name") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryBlue,
+                            focusedLabelColor = primaryBlue
+                        )
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                     Text(
-                        "Selected users: ${selectedUsersForGroup.joinToString(", ")}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Total members: ${selectedUsersForGroup.size + 1} (including you)",
+                        "Members: ${selectedUsersForGroup.size + 1} (including you)",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    val trimmedName = groupName.trim()
-                    if (trimmedName.isNotBlank() && selectedUsersForGroup.isNotEmpty()) {
-                        // Create group chat
-                        viewModel.createGroupChat(
-                            groupName = trimmedName,
-                            members = selectedUsersForGroup + myUsername,
-                            createdBy = myUsername
-                        )
+                val isEnabled = groupName.trim().isNotBlank() && selectedUsersForGroup.isNotEmpty()
 
-                        // Reset states
-                        groupName = ""
-                        selectedUsersForGroup = emptyList()
-                        showGroupNameDialog = false
-                        isCreatingGroup = false
-                    } else {
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                if (trimmedName.isBlank()) "Please enter a group name"
-                                else "Please select at least one user"
+                Button(
+                    onClick = {
+                        val trimmedName = groupName.trim()
+                        if (trimmedName.isNotBlank() && selectedUsersForGroup.isNotEmpty()) {
+                            viewModel.createGroupChat(
+                                groupName = trimmedName,
+                                members = selectedUsersForGroup + myUsername,
+                                createdBy = myUsername
                             )
+
+                            groupName = ""
+                            selectedUsersForGroup = emptyList()
+                            showGroupNameDialog = false
+                            isCreatingGroup = false
                         }
-                    }
-                }) {
-                    val isEnabled =
-                        groupName.trim().isNotBlank() && selectedUsersForGroup.isNotEmpty()
-
-                    Text(
-                        text = "Create",
-                        style = TextStyle(
-                            brush = if (isEnabled) {
-                                Brush.linearGradient(
-                                    colors = listOf(gradientBlueStart, gradientBlueEnd)
-                                )
-                            } else null
-                        ),
-                        color = if (isEnabled) Color.Unspecified else Color.Gray
-                    )
-
+                    },
+                    enabled = isEnabled,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = primaryBlue
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Create Group")
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    groupName = ""
-                    showGroupNameDialog = false
-                }) { Text("Cancel") }
-            }
+                TextButton(
+                    onClick = {
+                        groupName = ""
+                        showGroupNameDialog = false
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel")
+                }
+            },
+            shape = RoundedCornerShape(12.dp)
         )
     }
 
@@ -603,7 +746,6 @@ fun UserListScreen(
                             }
                         }
 
-                        // Voice command for creating group
                         cmd.startsWith("create group") -> {
                             isCreatingGroup = true
                             selectedUsersForGroup = emptyList()
@@ -685,55 +827,227 @@ fun UserListScreen(
         modifier = Modifier.padding(16.dp)
     )
 }
-
-// New: Group Item Composable
 @Composable
-fun GroupItem(
+fun QuickActionButton(
+    icon: Int? = null,
+    iconVector: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    label: String,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(80.dp)
+            .clickable { onClick() }
+    ) {
+        Card(
+            modifier = Modifier.size(56.dp),
+            shape = CircleShape,
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFFF0F2F5)
+            ),
+            elevation = CardDefaults.cardElevation(0.dp)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                if (icon != null) {
+                    Icon(
+                        painter = painterResource(id = icon),
+                        contentDescription = label,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else if (iconVector != null) {
+                    Icon(
+                        imageVector = iconVector,
+                        contentDescription = label,
+                        tint = Color.Gray,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = Color.Gray,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+fun UserListContent(
+    users: List<String>,
+    groups: List<Group>,
+    myUsername: String,
+    unreadCounts: Map<String, Int>,
+    lastMessages: Map<String, String>,
+    isGroupSelect: Boolean,
+    selectedUsers: List<String>,
+    onUserClick: (String) -> Unit,
+    onGroupClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        // Groups Section
+        if (groups.isNotEmpty() && !isGroupSelect) {
+            items(groups) { group ->
+                GroupListItem(
+                    group = group,
+                    onClick = { onGroupClick(group.id) }
+                )
+                Divider(color = Color(0xFFF0F2F5), thickness = 0.5.dp)
+            }
+        }
+
+        // Users Section
+        if (users.isEmpty() && groups.isEmpty()) {
+            item {
+                EmptyState(
+                    message = "No contacts available",
+                    modifier = Modifier.fillParentMaxSize()
+                )
+            }
+        } else {
+            items(users) { user ->
+                UserListItem(
+                    user = user,
+                    isSelected = selectedUsers.contains(user),
+                    isGroupSelect = isGroupSelect,
+                    unreadCount = unreadCounts[user] ?: 0,
+                    lastMessage = lastMessages[user] ?: "",
+                    onClick = { onUserClick(user) }
+                )
+                Divider(color = Color(0xFFF0F2F5), thickness = 0.5.dp)
+            }
+        }
+    }
+}
+
+@Composable
+fun GroupCreationContent(
+    users: List<String>,
+    myUsername: String,
+    selectedUsers: List<String>,
+    onUserClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        // Selected Users Preview
+        if (selectedUsers.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFF0F2F5)
+                ),
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        "Selected (${selectedUsers.size})",
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.Black
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        selectedUsers.forEach { user ->
+                            SelectedUserChip(
+                                user = user,
+                                onRemove = { onUserClick(user) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // User List
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            if (users.isEmpty()) {
+                item {
+                    EmptyState(
+                        message = "No contacts to add",
+                        modifier = Modifier.fillParentMaxSize()
+                    )
+                }
+            } else {
+                items(users) { user ->
+                    UserSelectionItem(
+                        user = user,
+                        isSelected = selectedUsers.contains(user),
+                        onClick = { onUserClick(user) }
+                    )
+                    Divider(color = Color(0xFFF0F2F5), thickness = 0.5.dp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GroupListItem(
     group: Group,
     onClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = lighterBlue // Using the lighter blue variant
-        ),
-        border = BorderStroke(1.dp, primaryBlue.copy(alpha = 0.1f)) // Subtle blue border
+    Surface(
+        onClick = onClick,
+        color = Color.White
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Group icon with gradient
+            // Group Avatar
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(gradientBlueStart, gradientBlueEnd)
-                        ),
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8E8E8))
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.group_user),
                     contentDescription = "Group",
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
+                    tint = Color.Gray,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .align(Alignment.Center)
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(Modifier.width(16.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            // Group Info
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
                 Text(
                     text = group.name,
-                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
                     color = Color.Black
                 )
 
@@ -741,17 +1055,120 @@ fun GroupItem(
 
                 Text(
                     text = "${group.members.size} members",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = primaryBlue.copy(alpha = 0.7f) // Blue tint for member count
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+            }
+
+            // Last Message Preview
+            if (group.lastMessage.isNotEmpty()) {
+                Text(
+                    text = group.lastMessage,
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .widthIn(max = 140.dp)
+                        .padding(start = 8.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun UserListItem(
+    user: String,
+    isSelected: Boolean,
+    isGroupSelect: Boolean,
+    unreadCount: Int,
+    lastMessage: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = if (isSelected) Color(0xFFE8F5E8) else Color.White
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isGroupSelect) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) primaryBlue else Color.LightGray)
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .align(Alignment.Center)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(16.dp))
+            }
+
+            // User Avatar
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8E8E8))
+            ) {
+                Text(
+                    text = user.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            // User Info
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = user,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = Color.Black
                 )
 
-                if (group.lastMessage.isNotEmpty()) {
+                if (lastMessage.isNotEmpty() && !isGroupSelect) {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = group.lastMessage,
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = lastMessage,
+                        fontSize = 14.sp,
                         color = Color.Gray,
                         maxLines = 1
+                    )
+                }
+            }
+
+            // Unread Badge
+            if (!isGroupSelect && unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(primaryBlue)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (unreadCount > 99) "99+" else unreadCount.toString(),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -760,203 +1177,127 @@ fun GroupItem(
 }
 
 @Composable
-fun SelectedUsersRow(selectedUsers: List<String>) {
-    if (selectedUsers.isEmpty()) return
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.Start
+fun UserSelectionItem(
+    user: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        color = Color.White
     ) {
-        selectedUsers.forEach { user ->
-            // Light colored circle with first letter
-            val profileBgColor = remember(user) {
-                val colors = listOf(
-                    Color(0xFFFFCDD2),
-                    Color(0xFFC8E6C9),
-                    Color(0xFFBBDEFB),
-                    Color(0xFFFFF9C4),
-                    Color(0xFFD1C4E9),
-                    Color(0xFFFFE0B2)
-                )
-                colors[kotlin.math.abs(user.hashCode()) % colors.size]
-            }
-
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(profileBgColor, shape = CircleShape)
-                    .padding(4.dp),
-                contentAlignment = Alignment.Center
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(if (isSelected) primaryBlue else Color.LightGray)
+            ) {
+                if (isSelected) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Selected",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .align(Alignment.Center)
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(16.dp))
+
+            // User Avatar
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE8E8E8))
             ) {
                 Text(
-                    text = user.first().uppercaseChar().toString(),
-                    color = Color(0xFF212121),
-                    style = MaterialTheme.typography.titleMedium
+                    text = user.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.align(Alignment.Center)
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(Modifier.width(16.dp))
+
+            Text(
+                text = user,
+                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp,
+                color = Color.Black,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
 
 @Composable
-fun AIAssistantButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    size: Dp = 56.dp
+fun SelectedUserChip(
+    user: String,
+    onRemove: () -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition()
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        )
-    )
-
-    Box(
-        modifier = modifier
-            .size(size)
-            .scale(pulse)
-            .background(
-                brush = Brush.verticalGradient(listOf(Color(0xFF0D88FF), Color(0xFF42A5F5))),
-                shape = CircleShape
-            )
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
+    Surface(
+        onClick = onRemove,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = CardDefaults.outlinedCardBorder()
     ) {
-        Icon(
-            painter = painterResource(id = R.drawable.voice_ai),
-            contentDescription = "AI Assistant",
-            tint = Color.White,
-            modifier = Modifier.size(26.dp)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Text(
+                user,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.Black
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Remove",
+                tint = Color.Gray,
+                modifier = Modifier.size(14.dp)
+            )
+        }
     }
 }
+
 @Composable
-fun UserListContent(
-    users: List<String>,
-    myUsername: String,
-    unreadCounts: Map<String, Int>,
-    lastMessages: Map<String, String>,
-    isGroupSelect: Boolean,
-    selectedUsers: List<String>,
-    onUserClick: (String) -> Unit
+fun EmptyState(
+    message: String,
+    modifier: Modifier = Modifier
 ) {
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize()
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
-        items(users) { user ->
-            val unread = unreadCounts[user] ?: 0
-            val lastMsg = lastMessages[user] ?: ""
-            val isSelected = selectedUsers.contains(user)
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onUserClick(user) },
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected)
-                        Color(0xFFE3F2FD)
-                    else
-                        MaterialTheme.colorScheme.surface
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-
-                    if (isGroupSelect) {
-                        Checkbox(
-                            checked = isSelected,
-                            onCheckedChange = null // Handle click on card instead
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-
-                    // Profile color based on username
-                    val profileBgColor = remember(user) {
-                        val colors = listOf(
-                            Color(0xFFFFCDD2),
-                            Color(0xFFC8E6C9),
-                            Color(0xFFBBDEFB),
-                            Color(0xFFFFF9C4),
-                            Color(0xFFD1C4E9),
-                            Color(0xFFFFE0B2)
-                        )
-                        colors[kotlin.math.abs(user.hashCode()) % colors.size]
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(
-                                color = profileBgColor,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = user.first().uppercaseChar().toString(),
-                            color = Color(0xFF212121),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = user,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-
-                        if (!isGroupSelect && lastMsg.isNotEmpty()) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                lastMsg,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.Gray,
-                                maxLines = 1
-                            )
-                        }
-                    }
-
-                    if (!isGroupSelect && unread > 0) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    Color(0xFF0D88FF),
-                                    RoundedCornerShape(20.dp)
-                                )
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                unread.toString(),
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-                }
-
-                Divider(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 72.dp),
-                    thickness = 0.5.dp,
-                    color = Color(0xFFE0E0E0)
-                )
-            }
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.voice_ai),
+                contentDescription = null,
+                tint = Color(0xFFCCCCCC),
+                modifier = Modifier.size(60.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = message,
+                fontSize = 16.sp,
+                color = Color.Gray,
+                fontWeight = FontWeight.Medium
+            )
         }
     }
 }
