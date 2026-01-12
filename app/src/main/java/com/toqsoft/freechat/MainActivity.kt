@@ -297,7 +297,7 @@ fun AppNavHost(navController: androidx.navigation.NavHostController) {
                 navController = navController,
                 callId = callId,
                 callerId = callerId,
-                receiverId = receiverId
+                receiverId = receiverId,
             )
         }
 

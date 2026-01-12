@@ -38,7 +38,6 @@ import com.toqsoft.freechat.featureVoiceListening.VoiceRecognitionHelper
 import com.toqsoft.freechat.featureVoiceListening.view.VoiceListeningDialog
 import kotlinx.coroutines.launch
 
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun UserListScreen(
@@ -90,7 +89,6 @@ fun UserListScreen(
         originalUsername = myUsername
     }
 
-
     var showAddUserDialog by remember { mutableStateOf(false) }
     var showListening by remember { mutableStateOf(false) }
 
@@ -129,119 +127,146 @@ fun UserListScreen(
 
     Scaffold(
         topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(primaryBlue)
-            ) {
-                // Main Top Bar (always visible)
+            if (isCreatingGroup) {
+                // Group Creation Top Bar
                 TopAppBar(
                     title = {
-                        if (showSearchBar) {
-                            // In search mode, show back button instead of title
-                            Box(modifier = Modifier.fillMaxWidth())
-                        } else {
-                            Text(
-                                "FreeChat",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 20.sp
-                            )
-                        }
+                        Text(
+                            "New Group",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     },
                     navigationIcon = {
-                        if (showSearchBar) {
-                            IconButton(
-                                onClick = {
-                                    showSearchBar = false
-                                    searchQuery = ""
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
-                            }
-                        } else {
-                            IconButton(
-                                onClick = { showProfileDialog = true },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Default.Person, contentDescription = "Profile", tint = Color.White)
-                            }
+                        IconButton(
+                            onClick = {
+                                isCreatingGroup = false
+                                selectedUsersForGroup = emptyList()
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Cancel", tint = Color.White)
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent
-                    ),
-                    actions = {
-                        if (showSearchBar) {
-                            // Empty actions during search
-                        } else {
-                            IconButton(
-                                onClick = { showSearchBar = true },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                        containerColor = primaryBlue
+                    )
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(primaryBlue)
+                ) {
+                    // Main Top Bar (always visible)
+                    TopAppBar(
+                        title = {
+                            if (showSearchBar) {
+                                // In search mode, show back button instead of title
+                                Box(modifier = Modifier.fillMaxWidth())
+                            } else {
+                                Text(
+                                    "FreeChat",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 20.sp
+                                )
                             }
-                            IconButton(
-                                onClick = { /* Handle more options */ },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                        },
+                        navigationIcon = {
+                            if (showSearchBar) {
+                                IconButton(
+                                    onClick = {
+                                        showSearchBar = false
+                                        searchQuery = ""
+                                    },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                                }
+                            } else {
+                                IconButton(
+                                    onClick = { showProfileDialog = true },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(Icons.Default.Person, contentDescription = "Profile", tint = Color.White)
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent
+                        ),
+                        actions = {
+                            if (showSearchBar) {
+                                // Empty actions during search
+                            } else {
+                                IconButton(
+                                    onClick = { showSearchBar = true },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White)
+                                }
+                                IconButton(
+                                    onClick = { /* Handle more options */ },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                                }
                             }
                         }
-                    }
-                )
+                    )
 
-                // Search Bar (only visible when showSearchBar is true)
-                if (showSearchBar) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color.White
-                        ),
-                        elevation = CardDefaults.cardElevation(4.dp)
-                    ) {
-                        Row(
+                    // Search Bar (only visible when showSearchBar is true)
+                    if (showSearchBar) {
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 1.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color.White
+                            ),
+                            elevation = CardDefaults.cardElevation(4.dp)
                         ) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = Color.Gray,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            TextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                modifier = Modifier.weight(1f),
-                                placeholder = { Text("Search contacts...") },
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    disabledContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    disabledIndicatorColor = Color.Transparent
-                                )
-                            )
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(
-                                    onClick = { searchQuery = "" },
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 1.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = Color.Gray,
                                     modifier = Modifier.size(20.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Close,
-                                        contentDescription = "Clear",
-                                        tint = Color.Gray,
-                                        modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                TextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = { Text("Search contacts...") },
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledIndicatorColor = Color.Transparent
                                     )
+                                )
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { searchQuery = "" },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Clear",
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -307,7 +332,19 @@ fun UserListScreen(
             }
         },
         floatingActionButton = {
-            if (!isCreatingGroup && !isGroupSelect && !showSearchBar) {
+            if (isCreatingGroup && selectedUsersForGroup.isNotEmpty()) {
+                // Show FAB when creating group with selected users
+                FloatingActionButton(
+                    onClick = { showGroupNameDialog = true },
+                    containerColor = primaryBlue,
+                    contentColor = Color.White,
+                    modifier = Modifier
+                        .size(56.dp)
+                        .padding(bottom = 16.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = "Create Group")
+                }
+            } else if (!isCreatingGroup && !isGroupSelect && !showSearchBar) {
                 FloatingActionButton(
                     onClick = { showAddUserDialog = true },
                     containerColor = primaryBlue,
@@ -343,6 +380,9 @@ fun UserListScreen(
                             } else {
                                 selectedUsersForGroup = selectedUsersForGroup + user
                             }
+                        },
+                        onCreateGroup = {
+                            showGroupNameDialog = true
                         },
                         modifier = Modifier.fillMaxSize()
                     )
@@ -591,7 +631,7 @@ fun UserListScreen(
         )
     }
 
-// Add User Dialog
+    // Add User Dialog
     if (showAddUserDialog) {
         AlertDialog(
             onDismissRequest = { showAddUserDialog = false },
@@ -642,7 +682,6 @@ fun UserListScreen(
             }
         )
     }
-
 
     // Group Name Dialog
     if (showGroupNameDialog) {
@@ -827,6 +866,130 @@ fun UserListScreen(
         modifier = Modifier.padding(16.dp)
     )
 }
+
+@Composable
+fun GroupCreationContent(
+    users: List<String>,
+    myUsername: String,
+    selectedUsers: List<String>,
+    onUserClick: (String) -> Unit,
+    onCreateGroup: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        // Selected Users Preview
+        if (selectedUsers.isNotEmpty()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFF0F2F5)
+                ),
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Selected (${selectedUsers.size})",
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Black
+                        )
+
+                        // Create Group Button
+                        Button(
+                            onClick = onCreateGroup,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = primaryBlue
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            enabled = selectedUsers.isNotEmpty()
+                        ) {
+                            Text("Create Group")
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        selectedUsers.forEach { user ->
+                            SelectedUserChip(
+                                user = user,
+                                onRemove = { onUserClick(user) }
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            // Show message when no users selected
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFF0F2F5)
+                ),
+                elevation = CardDefaults.cardElevation(0.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Select users to create a group",
+                        fontWeight = FontWeight.Medium,
+                        color = Color.Gray
+                    )
+
+                    Text(
+                        "0 selected",
+                        color = Color.Gray,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+
+        // User List
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            if (users.isEmpty()) {
+                item {
+                    EmptyState(
+                        message = "No contacts to add",
+                        modifier = Modifier.fillParentMaxSize()
+                    )
+                }
+            } else {
+                items(users) { user ->
+                    UserSelectionItem(
+                        user = user,
+                        isSelected = selectedUsers.contains(user),
+                        onClick = { onUserClick(user) }
+                    )
+                    Divider(color = Color(0xFFF0F2F5), thickness = 0.5.dp)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun QuickActionButton(
     icon: Int? = null,
@@ -928,79 +1091,6 @@ fun UserListContent(
                     onClick = { onUserClick(user) }
                 )
                 Divider(color = Color(0xFFF0F2F5), thickness = 0.5.dp)
-            }
-        }
-    }
-}
-
-@Composable
-fun GroupCreationContent(
-    users: List<String>,
-    myUsername: String,
-    selectedUsers: List<String>,
-    onUserClick: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier) {
-        // Selected Users Preview
-        if (selectedUsers.isNotEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFF0F2F5)
-                ),
-                elevation = CardDefaults.cardElevation(0.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        "Selected (${selectedUsers.size})",
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.Black
-                    )
-
-                    Spacer(Modifier.height(12.dp))
-
-                    androidx.compose.foundation.layout.FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        selectedUsers.forEach { user ->
-                            SelectedUserChip(
-                                user = user,
-                                onRemove = { onUserClick(user) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // User List
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            if (users.isEmpty()) {
-                item {
-                    EmptyState(
-                        message = "No contacts to add",
-                        modifier = Modifier.fillParentMaxSize()
-                    )
-                }
-            } else {
-                items(users) { user ->
-                    UserSelectionItem(
-                        user = user,
-                        isSelected = selectedUsers.contains(user),
-                        onClick = { onUserClick(user) }
-                    )
-                    Divider(color = Color(0xFFF0F2F5), thickness = 0.5.dp)
-                }
             }
         }
     }
